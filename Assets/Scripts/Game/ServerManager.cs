@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO; 
 
 public class ServerManager : MonoBehaviour
 {
@@ -16,6 +17,8 @@ public class ServerManager : MonoBehaviour
     private TcpListener tcpListener;
     private readonly List<TcpClient> tcpClients = new List<TcpClient>();
     private readonly Dictionary<TcpClient, string> tcpClientNames = new Dictionary<TcpClient, string>();
+
+    private readonly Dictionary<TcpClient, StreamWriter> tcpClientWriters = new Dictionary<TcpClient, StreamWriter>();
 
     private UdpClient udpListener;
     private readonly List<IPEndPoint> udpClients = new List<IPEndPoint>();
@@ -71,15 +74,22 @@ public class ServerManager : MonoBehaviour
     {
         TcpClient tcpClient = (TcpClient)clientObj;
         NetworkStream stream = tcpClient.GetStream();
-        byte[] buffer = new byte[4096];
-        int bytesRead;
+        StreamReader reader = new StreamReader(stream, Encoding.ASCII);
+        StreamWriter writer = new StreamWriter(stream, Encoding.ASCII);
 
+
+        lock(tcpClientWriters)
+        {
+            tcpClientWriters.Add(tcpClient, writer);
+        }
+        
         try
         {
-             while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)
+
+             string jsonMessage;
+             while ((jsonMessage = reader.ReadLine()) != null)
              {
-                 string message = Encoding.ASCII.GetString(buffer, 0, bytesRead);
-                 ProcessMessage(message, tcpClient);
+                 ProcessMessage(jsonMessage, tcpClient);
              }
         }
         catch { }
@@ -90,11 +100,20 @@ public class ServerManager : MonoBehaviour
             {
                 EnqueueToMainThread(() => HandlePlayerDisconnect(name));
             }
+            
+
             lock (tcpClients) 
             {
                 tcpClients.Remove(tcpClient);
                 tcpClientNames.Remove(tcpClient);
             }
+            lock (tcpClientWriters)
+            {
+                tcpClientWriters.Remove(tcpClient);
+            }
+            
+            writer.Close();
+            reader.Close();
             tcpClient.Close();
             UpdatePlayerListForAll();
         }
@@ -118,36 +137,48 @@ public class ServerManager : MonoBehaviour
                     EnqueueToMainThread(() => Debug.Log($"Nuevo cliente UDP contactó desde: {clientEndPoint}"));
                 }
 
-                string message = Encoding.ASCII.GetString(data);
-                ProcessMessage(message, clientEndPoint);
+                string jsonMessage = Encoding.ASCII.GetString(data); 
+                ProcessMessage(jsonMessage, clientEndPoint);
             }
         }
         catch (System.Exception e) { EnqueueToMainThread(() => Debug.LogError("Error en listener UDP: " + e.Message)); }
     }
     
-    private void ProcessMessage(string msg, object sender)
+    private void ProcessMessage(string jsonMsg, object sender)
     {
-        string[] parts = msg.Split(new char[] { ':' }, 2);
-        string msgType = parts[0];
-        string msgData = parts.Length > 1 ? parts[1] : "";
-
-        if (msgType == "JOIN")
+        Debug.Log("<color=yellow>SERVER [RECV]:</color> " + jsonMsg);
+        NetMessage msg;
+        try
         {
-            string senderName = msgData;
+
+            msg = JsonUtility.FromJson<NetMessage>(jsonMsg);
+            if (msg == null) return;
+        }
+        catch (System.Exception e)
+        {
+            EnqueueToMainThread(() => Debug.LogWarning("Error al deserializar mensaje de cliente: " + e.Message + " | JSON: " + jsonMsg));
+            return;
+        }
+
+        if (msg.msgType == "JOIN")
+        {
+            string senderName = msg.msgData;
             if(serverMode == NetworkChoice.Protocol.TCP) tcpClientNames[(TcpClient)sender] = senderName;
             else udpClientNames[(IPEndPoint)sender] = senderName;
             
             HandlePlayerJoin(senderName);
         }
-        else if (msgType == "CHAT")
+        else if (msg.msgType == "CHAT")
         {
              string senderName = "Desconocido";
              if(serverMode == NetworkChoice.Protocol.TCP) senderName = tcpClientNames.ContainsKey((TcpClient)sender) ? tcpClientNames[(TcpClient)sender] : senderName;
              else senderName = udpClientNames.ContainsKey((IPEndPoint)sender) ? udpClientNames[(IPEndPoint)sender] : senderName;
             
-            string formattedMessage = $"{senderName}: {msgData}";
+            string formattedMessage = $"{senderName}: {msg.msgData}";
             EnqueueToMainThread(() => lobbyUI.AddChatMessage(formattedMessage));
-            BroadcastMessage($"CHAT:{formattedMessage}");
+            
+
+            BroadcastMessage(new NetMessage("CHAT", formattedMessage));
         }
     }
     
@@ -156,7 +187,9 @@ public class ServerManager : MonoBehaviour
         string hostName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY, "Host");
         string formattedMessage = $"{hostName}: {message}";
         lobbyUI.AddChatMessage(formattedMessage);
-        BroadcastMessage($"CHAT:{formattedMessage}");
+        
+
+        BroadcastMessage(new NetMessage("CHAT", formattedMessage));
     }
 
     private void HandlePlayerJoin(string name)
@@ -164,7 +197,9 @@ public class ServerManager : MonoBehaviour
         EnqueueToMainThread(() => {
             string joinMessage = $"{name} se ha unido a la sala.";
             lobbyUI.AddChatMessage(joinMessage);
-            BroadcastMessage($"CHAT:{joinMessage}");
+            
+
+            BroadcastMessage(new NetMessage("CHAT", joinMessage));
             UpdatePlayerListForAll();
         });
     }
@@ -173,25 +208,48 @@ public class ServerManager : MonoBehaviour
     {
         string leaveMessage = $"{name} ha abandonado la sala.";
         lobbyUI.AddChatMessage(leaveMessage);
-        BroadcastMessage($"CHAT:{leaveMessage}");
+        
+
+        BroadcastMessage(new NetMessage("CHAT", leaveMessage));
     }
 
-    public void BroadcastMessage(string message)
+    public void BroadcastMessage(NetMessage msg)
     {
-        byte[] data = Encoding.ASCII.GetBytes(message);
+        string jsonMessage = JsonUtility.ToJson(msg);
 
         if (serverMode == NetworkChoice.Protocol.TCP)
         {
-            lock (tcpClients)
+            lock (tcpClientWriters)
             {
-                foreach (var client in tcpClients) client.GetStream().Write(data, 0, data.Length);
+
+                var writers = tcpClientWriters.Values.ToList();
+                foreach (var writer in writers)
+                {
+                    try
+                    {
+
+                        writer.WriteLine(jsonMessage);
+                        writer.Flush();
+                    } catch (System.Exception e) {
+                        EnqueueToMainThread(() => Debug.LogWarning("Error al broadcastear a cliente TCP: " + e.Message));
+                    }
+                }
             }
         }
         else
         {
+            byte[] data = Encoding.ASCII.GetBytes(jsonMessage);
             lock (udpClients)
             {
-                foreach (var clientEndPoint in udpClients) udpListener.Send(data, data.Length, clientEndPoint);
+                foreach (var clientEndPoint in udpClients)
+                {
+                    try
+                    {
+                        udpListener.Send(data, data.Length, clientEndPoint);
+                    } catch (System.Exception e) {
+                        EnqueueToMainThread(() => Debug.LogWarning("Error al broadcastear a cliente UDP: " + e.Message));
+                    }
+                }
             }
         }
     }
@@ -207,7 +265,11 @@ public class ServerManager : MonoBehaviour
             playerNames.Insert(0, hostName);
             
             lobbyUI.UpdatePlayerList(playerNames);
-            BroadcastMessage("PLAYERLIST:" + string.Join(",", playerNames));
+            
+
+
+            string listData = string.Join(",", playerNames);
+            BroadcastMessage(new NetMessage("PLAYERLIST", listData));
         });
     }
 
@@ -223,6 +285,13 @@ public class ServerManager : MonoBehaviour
     {
         listenerThread?.Abort();
         if (tcpListener != null) tcpListener.Stop();
+        
+
+        lock(tcpClientWriters)
+        {
+            foreach(var writer in tcpClientWriters.Values) writer.Close();
+        }
+        
         if (udpListener != null) udpListener.Close();
     }
 }

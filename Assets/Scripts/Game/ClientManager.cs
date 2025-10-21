@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Collections.Generic;
+using System.IO; 
 
 public class ClientManager : MonoBehaviour
 {
@@ -13,7 +14,10 @@ public class ClientManager : MonoBehaviour
     private bool isRunning = false;
 
     private TcpClient tcpClient;
-    private NetworkStream tcpStream;
+
+    private StreamWriter tcpWriter;
+    private StreamReader tcpReader;
+
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
 
@@ -45,16 +49,21 @@ public class ClientManager : MonoBehaviour
         try
         {
             tcpClient = new TcpClient(ip, NetworkGlobals.GAME_PORT_TCP);
-            tcpStream = tcpClient.GetStream();
+            NetworkStream stream = tcpClient.GetStream();
+            tcpWriter = new StreamWriter(stream, Encoding.ASCII);
+            tcpReader = new StreamReader(stream, Encoding.ASCII);
+            
             EnqueueToMainThread(() => Debug.Log("Conectado al servidor TCP."));
             
-            SendMessageToServer($"JOIN:{PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY)}");
 
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            while (isRunning && (bytesRead = tcpStream.Read(buffer, 0, buffer.Length)) > 0)
+            NetMessage joinMsg = new NetMessage("JOIN", PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY));
+            SendMessageToServer(joinMsg);
+
+
+            string jsonMessage;
+            while (isRunning && (jsonMessage = tcpReader.ReadLine()) != null)
             {
-                EnqueueToMainThread(Encoding.ASCII.GetString(buffer, 0, bytesRead));
+                EnqueueToMainThread(jsonMessage);
             }
         }
         catch (System.Exception e)
@@ -71,13 +80,16 @@ public class ClientManager : MonoBehaviour
             serverEndPoint = new IPEndPoint(IPAddress.Parse(ip), NetworkGlobals.GAME_PORT_UDP);
             EnqueueToMainThread(() => Debug.Log("Cliente UDP listo."));
             
-            SendMessageToServer($"JOIN:{PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY)}");
+
+            NetMessage joinMsg = new NetMessage("JOIN", PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY));
+            SendMessageToServer(joinMsg);
             
             while(isRunning)
             {
                 IPEndPoint anyIp = new IPEndPoint(IPAddress.Any, 0);
                 byte[] data = udpClient.Receive(ref anyIp);
-                EnqueueToMainThread(Encoding.ASCII.GetString(data));
+                string jsonMessage = Encoding.ASCII.GetString(data); 
+                EnqueueToMainThread(jsonMessage);
             }
         }
         catch (System.Exception e)
@@ -97,20 +109,27 @@ public class ClientManager : MonoBehaviour
         }
     }
 
-    private void ProcessServerMessage(string msg)
+    private void ProcessServerMessage(string jsonMsg)
     {
-        string[] parts = msg.Split(new char[] { ':' }, 2);
-        string msgType = parts[0];
-        string msgData = parts.Length > 1 ? parts[1] : "";
+        try
+        {
 
-        if (msgType == "CHAT")
-        {
-            lobbyUI.AddChatMessage(msgData);
+            NetMessage msg = JsonUtility.FromJson<NetMessage>(jsonMsg);
+            if (msg == null) return;
+
+            if (msg.msgType == "CHAT")
+            {
+                lobbyUI.AddChatMessage(msg.msgData);
+            }
+            else if (msg.msgType == "PLAYERLIST")
+            {
+                string[] playerNames = msg.msgData.Split(',');
+                lobbyUI.UpdatePlayerList(new List<string>(playerNames));
+            }
         }
-        else if (msgType == "PLAYERLIST")
+        catch (System.Exception e)
         {
-            string[] playerNames = msgData.Split(',');
-            lobbyUI.UpdatePlayerList(new List<string>(playerNames));
+            Debug.LogWarning("Error al deserializar mensaje del servidor: " + e.Message + " | JSON: " + jsonMsg);
         }
     }
 
@@ -118,21 +137,30 @@ public class ClientManager : MonoBehaviour
     {
         if (!string.IsNullOrWhiteSpace(message))
         {
-            SendMessageToServer($"CHAT:{message}");
+
+            NetMessage chatMsg = new NetMessage("CHAT", message);
+            SendMessageToServer(chatMsg);
         }
     }
 
-    private void SendMessageToServer(string message)
+    private void SendMessageToServer(NetMessage msg)
     {
-        byte[] data = Encoding.ASCII.GetBytes(message);
+        string jsonMessage = JsonUtility.ToJson(msg); 
+
+        Debug.Log("<color=cyan>CLIENT [SENT]:</color> " + jsonMessage);
+        
         try
         {
             if (clientMode == NetworkChoice.Protocol.TCP)
             {
-                tcpStream?.Write(data, 0, data.Length);
+
+                tcpWriter?.WriteLine(jsonMessage);
+                tcpWriter?.Flush();
             }
             else
             {
+
+                byte[] data = Encoding.ASCII.GetBytes(jsonMessage);
                 udpClient?.Send(data, data.Length, serverEndPoint);
             }
         }
@@ -162,6 +190,9 @@ public class ClientManager : MonoBehaviour
     {
         isRunning = false;
         receiveThread?.Abort();
+        
+        tcpWriter?.Close(); 
+        tcpReader?.Close(); 
         tcpClient?.Close();
         udpClient?.Close();
     }
