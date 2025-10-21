@@ -17,12 +17,14 @@ public class ClientManager : MonoBehaviour
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
 
+    private string playerName;
     private readonly Queue<string> messageQueue = new Queue<string>();
 
     public void ConnectToServer(string ipAddress)
     {
         clientMode = NetworkChoice.ChosenProtocol;
         isRunning = true;
+        playerName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY);
         
         try
         {
@@ -48,7 +50,7 @@ public class ClientManager : MonoBehaviour
             tcpStream = tcpClient.GetStream();
             EnqueueToMainThread(() => Debug.Log("Conectado al servidor TCP."));
             
-            SendMessageToServer($"JOIN:{PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY)}");
+            SendMessageToServer($"JOIN:{playerName}");
 
             byte[] buffer = new byte[4096];
             int bytesRead;
@@ -71,7 +73,7 @@ public class ClientManager : MonoBehaviour
             serverEndPoint = new IPEndPoint(IPAddress.Parse(ip), NetworkGlobals.GAME_PORT_UDP);
             EnqueueToMainThread(() => Debug.Log("Cliente UDP listo."));
             
-            SendMessageToServer($"JOIN:{PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY)}");
+            SendMessageToServer($"JOIN:{playerName}");
             
             while(isRunning)
             {
