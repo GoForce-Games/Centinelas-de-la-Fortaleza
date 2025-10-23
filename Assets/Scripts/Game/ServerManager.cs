@@ -163,22 +163,26 @@ public class ServerManager : MonoBehaviour
         if (msg.msgType == "JOIN")
         {
             string senderName = msg.msgData;
-            if(serverMode == NetworkChoice.Protocol.TCP) tcpClientNames[(TcpClient)sender] = senderName;
+            if (serverMode == NetworkChoice.Protocol.TCP) tcpClientNames[(TcpClient)sender] = senderName;
             else udpClientNames[(IPEndPoint)sender] = senderName;
-            
+
             HandlePlayerJoin(senderName);
         }
         else if (msg.msgType == "CHAT")
         {
-             string senderName = "Desconocido";
-             if(serverMode == NetworkChoice.Protocol.TCP) senderName = tcpClientNames.ContainsKey((TcpClient)sender) ? tcpClientNames[(TcpClient)sender] : senderName;
-             else senderName = udpClientNames.ContainsKey((IPEndPoint)sender) ? udpClientNames[(IPEndPoint)sender] : senderName;
-            
+            string senderName = "Desconocido";
+            if (serverMode == NetworkChoice.Protocol.TCP) senderName = tcpClientNames.ContainsKey((TcpClient)sender) ? tcpClientNames[(TcpClient)sender] : senderName;
+            else senderName = udpClientNames.ContainsKey((IPEndPoint)sender) ? udpClientNames[(IPEndPoint)sender] : senderName;
+
             string formattedMessage = $"{senderName}: {msg.msgData}";
             EnqueueToMainThread(() => lobbyUI.AddChatMessage(formattedMessage));
-            
+
 
             BroadcastMessage(new NetMessage("CHAT", formattedMessage));
+        }
+        else if (msg.msgType == "UI_Update" || msg.msgType == "Accion1_Clicked")
+        {
+            BroadcastMessage(msg);
         }
     }
     

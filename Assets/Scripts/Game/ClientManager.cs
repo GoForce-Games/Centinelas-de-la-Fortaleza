@@ -21,10 +21,17 @@ public class ClientManager : MonoBehaviour
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
 
+    private UIManagerReceptor uiReceptor;
+
     private readonly Queue<string> messageQueue = new Queue<string>();
 
     public void ConnectToServer(string ipAddress)
     {
+        uiReceptor = FindObjectOfType<UIManagerReceptor>();
+        if (uiReceptor == null)
+        {
+            Debug.LogError("ClientManager no pudo encontrar UIManagerReceptor.");
+        }
         clientMode = NetworkChoice.ChosenProtocol;
         isRunning = true;
         
@@ -126,6 +133,14 @@ public class ClientManager : MonoBehaviour
                 string[] playerNames = msg.msgData.Split(',');
                 lobbyUI.UpdatePlayerList(new List<string>(playerNames));
             }
+            else if (msg.msgType == "UI_Update" || msg.msgType == "Accion1_Clicked")
+            {
+                if (uiReceptor != null)
+                {
+                    // Le pasamos el JSON completo para que él lo procese
+                    uiReceptor.RecibirMensaje(jsonMsg);
+                }
+            }
         }
         catch (System.Exception e)
         {
@@ -143,7 +158,7 @@ public class ClientManager : MonoBehaviour
         }
     }
 
-    private void SendMessageToServer(NetMessage msg)
+    public void SendMessageToServer(NetMessage msg)
     {
         string jsonMessage = JsonUtility.ToJson(msg); 
 
