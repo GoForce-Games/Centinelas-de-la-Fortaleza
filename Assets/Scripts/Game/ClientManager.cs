@@ -23,6 +23,7 @@ public class ClientManager : MonoBehaviour
 
     private UIManagerReceptor uiReceptor;
 
+    private string playerName;
     private readonly Queue<string> messageQueue = new Queue<string>();
 
     public void ConnectToServer(string ipAddress)
@@ -34,6 +35,7 @@ public class ClientManager : MonoBehaviour
         }
         clientMode = NetworkChoice.ChosenProtocol;
         isRunning = true;
+        playerName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY);
         
         try
         {
@@ -63,7 +65,7 @@ public class ClientManager : MonoBehaviour
             EnqueueToMainThread(() => Debug.Log("Conectado al servidor TCP."));
             
 
-            NetMessage joinMsg = new NetMessage("JOIN", PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY));
+            NetMessage joinMsg = new NetMessage("JOIN", playerName);
             SendMessageToServer(joinMsg);
 
 
@@ -88,7 +90,7 @@ public class ClientManager : MonoBehaviour
             EnqueueToMainThread(() => Debug.Log("Cliente UDP listo."));
             
 
-            NetMessage joinMsg = new NetMessage("JOIN", PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY));
+            NetMessage joinMsg = new NetMessage("JOIN", playerName);
             SendMessageToServer(joinMsg);
             
             while(isRunning)
