@@ -435,7 +435,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &138176744
 RectTransform:
   m_ObjectHideFlags: 0
@@ -687,6 +687,54 @@ RectTransform:
   m_AnchoredPosition: {x: -5, y: 0}
   m_SizeDelta: {x: -20, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!1 &200370714
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 200370716}
+  - component: {fileID: 200370715}
+  m_Layer: 0
+  m_Name: UIManagerReciber
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &200370715
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 200370714}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 07a19bbee519847c18cc9c5b9979d9b2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  puertaSlider: {fileID: 2097606755}
+  bloqueoToggle: {fileID: 1786206327}
+  accion1Button: {fileID: 450034401}
+  accion2Button: {fileID: 1650789391}
+--- !u!4 &200370716
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 200370714}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 817.20465, y: 404.09164, z: 3.0883787}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &254241168
 GameObject:
   m_ObjectHideFlags: 0
@@ -872,7 +920,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   connectPanel: {fileID: 138176743}
-  lobbyPanel: {fileID: 773737233}
+  lobbyPanel: {fileID: 1046334107}
+  gamePanel: {fileID: 0}
   ipAddressInput: {fileID: 1260589000}
   connectButton: {fileID: 522705346}
   errorText: {fileID: 1675698068}
@@ -1760,6 +1809,54 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 585441867}
   m_CullTransparentMesh: 1
+--- !u!1 &636832880
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 636832882}
+  - component: {fileID: 636832881}
+  m_Layer: 0
+  m_Name: UIManagerEnviator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &636832881
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 636832880}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9fe7452d2e1ac407991c3b08911b066b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  puertaSlider: {fileID: 2097606755}
+  bloqueoToggle: {fileID: 1786206327}
+  accion1Button: {fileID: 450034401}
+  accion2Button: {fileID: 1650789391}
+--- !u!4 &636832882
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 636832880}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 817.20465, y: 404.09164, z: 3.0883787}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &685190564
 GameObject:
   m_ObjectHideFlags: 0
@@ -2145,8 +2242,8 @@ RectTransform:
   m_Children:
   - {fileID: 585441868}
   - {fileID: 773737234}
-  - {fileID: 138176744}
   - {fileID: 1046334108}
+  - {fileID: 138176744}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -4323,3 +4420,5 @@ SceneRoots:
   - {fileID: 878285446}
   - {fileID: 1639393947}
   - {fileID: 282511546}
+  - {fileID: 636832882}
+  - {fileID: 200370716}
