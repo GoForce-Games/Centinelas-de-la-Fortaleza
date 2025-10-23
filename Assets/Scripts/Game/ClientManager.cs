@@ -8,6 +8,8 @@ using System.IO;
 
 public class ClientManager : MonoBehaviour
 {
+    public static ClientManager instance = null;
+    
     private Thread receiveThread;
     public LobbyUI lobbyUI;
     private NetworkChoice.Protocol clientMode;
@@ -51,6 +53,9 @@ public class ClientManager : MonoBehaviour
         {
             Debug.LogError("Error al iniciar conexión: " + e.Message);
         }
+
+        //Sets the active client instance to this
+        instance = this;
     }
     
     private void ConnectAndReceiveTCP(string ip)
