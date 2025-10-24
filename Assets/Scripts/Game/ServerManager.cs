@@ -5,7 +5,8 @@ using System.Text;
 using System.Threading;
 using System.Collections.Generic;
 using System.Linq;
-using System.IO; 
+using System.IO;
+using Game;
 
 public class ServerManager : MonoBehaviour
 {
@@ -187,6 +188,10 @@ public class ServerManager : MonoBehaviour
         else if (msg.msgType == "UI_Update" || msg.msgType == "Accion1_Clicked")
         {
             BroadcastMessage(msg);
+        }
+        else if (msg.msgType == NetworkGlobals.MODULE_MANAGER_EVENT_KEY)
+        {
+            EnqueueToMainThread(()=> ModuleManager.ServerProcess(msg));
         }
         else
         {

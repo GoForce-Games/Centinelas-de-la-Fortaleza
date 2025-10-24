@@ -25,7 +25,7 @@ public class ClientManager : MonoBehaviour
 
     private UIManagerReceptor uiReceptor;
 
-    private string playerName;
+    public string playerName;
     private readonly Queue<string> messageQueue = new Queue<string>();
 
     public void ConnectToServer(string ipAddress)
