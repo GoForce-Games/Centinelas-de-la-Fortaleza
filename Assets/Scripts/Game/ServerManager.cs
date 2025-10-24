@@ -9,6 +9,8 @@ using System.IO;
 
 public class ServerManager : MonoBehaviour
 {
+    public static ServerManager instance = null;
+    
     private Thread listenerThread;
     public LobbyUI lobbyUI;
     private NetworkChoice.Protocol serverMode;
@@ -34,6 +36,8 @@ public class ServerManager : MonoBehaviour
         });
         listenerThread.IsBackground = true;
         listenerThread.Start();
+        
+        instance = this;
 
         UpdatePlayerListForAll();
     }
@@ -183,6 +187,10 @@ public class ServerManager : MonoBehaviour
         else if (msg.msgType == "UI_Update" || msg.msgType == "Accion1_Clicked")
         {
             BroadcastMessage(msg);
+        }
+        else
+        {
+            EnqueueToMainThread(()=> Debug.LogWarning($"Comando desconocido: {msg.msgType}\nDatos:\n{msg.msgData}"));
         }
     }
     
