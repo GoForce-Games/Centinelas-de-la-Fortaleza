@@ -191,7 +191,7 @@ public class ServerManager : MonoBehaviour
         }
         else if (msg.msgType == NetworkGlobals.MODULE_MANAGER_EVENT_KEY)
         {
-            EnqueueToMainThread(()=> ModuleManager.ServerProcess(msg));
+            EnqueueToMainThread(()=> ModuleManager.ServerProcessReceive(msg));
         }
         else
         {

@@ -38,6 +38,8 @@ namespace Game
         public static void AddModule(InteractableModule module) => _instance._modules.Add(module);
         public static void RemoveModule(InteractableModule module) => _instance._modules.Remove(module);
 
+        public static int GetNextID() => _idCounter++;
+        
         public static void QueueMessage(ModuleData moduleData)
         {
             lock (clientSide)
@@ -52,24 +54,21 @@ namespace Game
             if (!_instance) _instance = this;
             else Destroy(this);
             
-            // While it might be a bit wasteful, the server also sends its player messages to itself for now
-            StartCoroutine(ClientProcess());
         }
-
-        public static int GetNextID() => _idCounter++;
-
+        
         // Processes messages received from clients (WIP)
-        public static void ServerProcess(NetMessage message)
+        public static void ServerProcessReceive(NetMessage message)
         {
             lock (serverSide)
             {
                 ModuleDataList messagesReceived = JsonUtility.FromJson<ModuleDataList>(message.msgData);
                 messagesReceived.moduleList.ForEach(m => Debug.Log($"Received data from {messagesReceived.sourcePlayer}: {m.ToString()}"));
+                ServerManager.instance.BroadcastMessage(message);
             }
         }
 
         // Processes messages to send to server
-        public IEnumerator ClientProcess()
+        public IEnumerator ClientProcessSend()
         {
             NetMessage msg = new NetMessage(NetworkGlobals.MODULE_MANAGER_EVENT_KEY, "");
             // Every frame send pending messages to server
@@ -98,5 +97,16 @@ namespace Game
             }
 
         }
+
+        public static void ClientProcessReceive(NetMessage message)
+        {
+            lock (clientSide)
+            {
+                ModuleDataList messagesReceived = JsonUtility.FromJson<ModuleDataList>(message.msgData);
+                messagesReceived.moduleList.ForEach(m => Debug.Log($"Received data from {messagesReceived.sourcePlayer}: {m.ToString()}"));
+
+            }
+        }
+        
     }
 }
