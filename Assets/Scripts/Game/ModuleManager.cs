@@ -54,6 +54,7 @@ namespace Game
             if (!_instance) _instance = this;
             else Destroy(this);
             
+            StartCoroutine(ClientProcessSend());
         }
         
         // Processes messages received from clients (WIP)
@@ -63,7 +64,7 @@ namespace Game
             {
                 ModuleDataList messagesReceived = JsonUtility.FromJson<ModuleDataList>(message.msgData);
                 messagesReceived.moduleList.ForEach(m => Debug.Log($"Received data from {messagesReceived.sourcePlayer}: {m.ToString()}"));
-                ServerManager.instance.BroadcastMessage(message);
+                //ServerManager.instance.BroadcastMessage(message);
             }
         }
 
