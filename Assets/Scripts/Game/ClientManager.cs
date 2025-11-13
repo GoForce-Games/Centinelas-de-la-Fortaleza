@@ -64,8 +64,8 @@ public class ClientManager : MonoBehaviour
         {
             tcpClient = new TcpClient(ip, NetworkGlobals.GAME_PORT_TCP);
             NetworkStream stream = tcpClient.GetStream();
-            tcpWriter = new StreamWriter(stream, Encoding.ASCII);
-            tcpReader = new StreamReader(stream, Encoding.ASCII);
+            tcpWriter = new StreamWriter(stream, NetworkGlobals.ENCODING);
+            tcpReader = new StreamReader(stream, NetworkGlobals.ENCODING);
             
             EnqueueToMainThread(() => Debug.Log("Conectado al servidor TCP."));
             
@@ -102,8 +102,23 @@ public class ClientManager : MonoBehaviour
             {
                 IPEndPoint anyIp = new IPEndPoint(IPAddress.Any, 0);
                 byte[] data = udpClient.Receive(ref anyIp);
-                string jsonMessage = Encoding.ASCII.GetString(data); 
+                string jsonMessage = NetworkGlobals.ENCODING.GetString(data); 
                 EnqueueToMainThread(jsonMessage);
+            }
+
+            while (isRunning)
+            {
+                var resultTask = udpClient.ReceiveAsync();
+                if (await Task.WhenAny(resultTask, Task.Delay((int)(pingTimeout * 1000))) == resultTask)
+                {
+                    string jsonMessage = NetworkGlobals.ENCODING.GetString(resultTask.Result.Buffer);
+                    EnqueueToMainThread(jsonMessage);
+                }
+                else
+                {
+                    EnqueueToMainThread(() => Debug.LogError("Error en cliente UDP: Timeout"));
+                    isRunning = false;
+                }
             }
         }
         catch (System.Exception e)
@@ -182,7 +197,7 @@ public class ClientManager : MonoBehaviour
             else
             {
 
-                byte[] data = Encoding.ASCII.GetBytes(jsonMessage);
+                byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
                 udpClient?.Send(data, data.Length, serverEndPoint);
             }
         }

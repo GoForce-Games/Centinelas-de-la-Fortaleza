@@ -79,8 +79,8 @@ public class ServerManager : MonoBehaviour
     {
         TcpClient tcpClient = (TcpClient)clientObj;
         NetworkStream stream = tcpClient.GetStream();
-        StreamReader reader = new StreamReader(stream, Encoding.ASCII);
-        StreamWriter writer = new StreamWriter(stream, Encoding.ASCII);
+        StreamReader reader = new StreamReader(stream, NetworkGlobals.ENCODING);
+        StreamWriter writer = new StreamWriter(stream, NetworkGlobals.ENCODING);
 
 
         lock(tcpClientWriters)
@@ -142,7 +142,7 @@ public class ServerManager : MonoBehaviour
                     EnqueueToMainThread(() => Debug.Log($"Nuevo cliente UDP contactó desde: {clientEndPoint}"));
                 }
 
-                string jsonMessage = Encoding.ASCII.GetString(data); 
+                string jsonMessage = NetworkGlobals.ENCODING.GetString(data); 
                 ProcessMessage(jsonMessage, clientEndPoint);
             }
         }
@@ -255,7 +255,7 @@ public class ServerManager : MonoBehaviour
         }
         else
         {
-            byte[] data = Encoding.ASCII.GetBytes(jsonMessage);
+            byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
             lock (udpClients)
             {
                 foreach (var clientEndPoint in udpClients)
