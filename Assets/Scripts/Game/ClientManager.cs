@@ -1,10 +1,13 @@
+using System;
+using System.Collections;
 using UnityEngine;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Collections.Generic;
-using System.IO; 
+using System.IO;
+using System.Threading.Tasks;
 
 public class ClientManager : MonoBehaviour
 {
@@ -22,10 +25,15 @@ public class ClientManager : MonoBehaviour
 
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
+    private CancellationTokenSource cancelToken = new CancellationTokenSource();
+    private float lastPing = 0;
+    [SerializeField] private float pingInterval = 0.5f;
+    [SerializeField] private float pingTimeout = 3.0f;
 
     private UIManagerReceptor uiReceptor;
 
     public string playerName;
+    private readonly Queue<Action> actionQueue = new Queue<Action>();
     private readonly Queue<string> messageQueue = new Queue<string>();
 
     public void ConnectToServer(string ipAddress)
@@ -48,6 +56,18 @@ public class ClientManager : MonoBehaviour
             });
             receiveThread.IsBackground = true;
             receiveThread.Start();
+
+            // Ping if no data has been sent within pingInterval
+            IEnumerator PingTimer()
+            {
+                while (!cancelToken.IsCancellationRequested)
+                {
+                    if ((lastPing + pingInterval) < Time.time)
+                        SendMessageToServer(new NetMessage("PING", playerName));
+                    yield return new WaitForSeconds(pingInterval);
+                }
+            }
+            StartCoroutine(PingTimer());
         }
         catch (System.Exception e)
         {
@@ -86,7 +106,7 @@ public class ClientManager : MonoBehaviour
         }
     }
     
-    private void ConnectAndReceiveUDP(string ip)
+    private async void ConnectAndReceiveUDP(string ip)
     {
         try
         {
@@ -98,13 +118,13 @@ public class ClientManager : MonoBehaviour
             NetMessage joinMsg = new NetMessage("JOIN", playerName);
             SendMessageToServer(joinMsg);
             
-            while(isRunning)
-            {
-                IPEndPoint anyIp = new IPEndPoint(IPAddress.Any, 0);
-                byte[] data = udpClient.Receive(ref anyIp);
-                string jsonMessage = NetworkGlobals.ENCODING.GetString(data); 
-                EnqueueToMainThread(jsonMessage);
-            }
+            // while(isRunning)
+            // {
+            //     IPEndPoint anyIp = new IPEndPoint(IPAddress.Any, 0);
+            //     byte[] data = udpClient.Receive(ref anyIp);
+            //     string jsonMessage = NetworkGlobals.ENCODING.GetString(data); 
+            //     EnqueueToMainThread(jsonMessage);
+            // }
 
             while (isRunning)
             {
@@ -118,6 +138,7 @@ public class ClientManager : MonoBehaviour
                 {
                     EnqueueToMainThread(() => Debug.LogError("Error en cliente UDP: Timeout"));
                     isRunning = false;
+                    cancelToken.Cancel();
                 }
             }
         }
@@ -134,6 +155,14 @@ public class ClientManager : MonoBehaviour
             while (messageQueue.Count > 0)
             {
                 ProcessServerMessage(messageQueue.Dequeue());
+            }
+        }
+
+        lock (actionQueue)
+        {
+            while (actionQueue.Count > 0)
+            {
+                actionQueue.Dequeue()?.Invoke();
             }
         }
     }
@@ -196,9 +225,12 @@ public class ClientManager : MonoBehaviour
             }
             else
             {
-
-                byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
-                udpClient?.Send(data, data.Length, serverEndPoint);
+                lock (udpClient)
+                {
+                    byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
+                    udpClient?.Send(data, data.Length, serverEndPoint);
+                    EnqueueToMainThread(() => lastPing = Time.time); // Time.time can only be called in main thread
+                }
             }
         }
         catch (System.Exception e)
@@ -209,9 +241,9 @@ public class ClientManager : MonoBehaviour
 
     private void EnqueueToMainThread(System.Action action)
     {
-        lock (messageQueue)
+        lock (actionQueue)
         {
-             if(action != null) action.Invoke();
+             if(action != null) actionQueue.Enqueue(action);
         }
     }
     
