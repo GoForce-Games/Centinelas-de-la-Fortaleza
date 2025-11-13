@@ -5,7 +5,7 @@ using UnityEngine;
 
 public class Networking : MonoBehaviour
 {
-    void Start(
+    void Start()
     {
         
     }
