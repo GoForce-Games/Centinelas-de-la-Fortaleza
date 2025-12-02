@@ -17,11 +17,15 @@ public class ServerManager : MonoBehaviour
     private NetworkChoice.Protocol serverMode;
     private readonly Queue<System.Action> mainThreadActions = new Queue<System.Action>();
 
+    #region TCP variables
+
     private TcpListener tcpListener;
     private readonly List<TcpClient> tcpClients = new List<TcpClient>();
     private readonly Dictionary<TcpClient, string> tcpClientNames = new Dictionary<TcpClient, string>();
 
     private readonly Dictionary<TcpClient, StreamWriter> tcpClientWriters = new Dictionary<TcpClient, StreamWriter>();
+
+    #endregion
 
     private UdpClient udpListener;
     private readonly List<IPEndPoint> udpClients = new List<IPEndPoint>();
@@ -29,6 +33,7 @@ public class ServerManager : MonoBehaviour
 
     void Start()
     {
+        // TODO remove TCP code
         serverMode = NetworkChoice.ChosenProtocol;
         
         listenerThread = new Thread(() => {
@@ -54,6 +59,7 @@ public class ServerManager : MonoBehaviour
         }
     }
 
+    // TODO remove TCP code
     private void ListenForTcpClients()
     {
         try
@@ -75,6 +81,7 @@ public class ServerManager : MonoBehaviour
         catch (System.Exception e) { EnqueueToMainThread(() => Debug.LogError("Error en listener TCP: " + e.Message)); }
     }
 
+    // TODO remove TCP code
     private void HandleTcpClientComm(object clientObj)
     {
         TcpClient tcpClient = (TcpClient)clientObj;
@@ -168,6 +175,7 @@ public class ServerManager : MonoBehaviour
         if (msg.msgType == "JOIN")
         {
             string senderName = msg.msgData;
+            // TODO remove TCP code
             if (serverMode == NetworkChoice.Protocol.TCP) tcpClientNames[(TcpClient)sender] = senderName;
             else udpClientNames[(IPEndPoint)sender] = senderName;
 
@@ -176,6 +184,7 @@ public class ServerManager : MonoBehaviour
         else if (msg.msgType == "CHAT")
         {
             string senderName = "Desconocido";
+            // TODO remove TCP code
             if (serverMode == NetworkChoice.Protocol.TCP) senderName = tcpClientNames.ContainsKey((TcpClient)sender) ? tcpClientNames[(TcpClient)sender] : senderName;
             else senderName = udpClientNames.ContainsKey((IPEndPoint)sender) ? udpClientNames[(IPEndPoint)sender] : senderName;
 
@@ -234,6 +243,7 @@ public class ServerManager : MonoBehaviour
     {
         string jsonMessage = JsonUtility.ToJson(msg);
 
+        // TODO remove TCP code
         if (serverMode == NetworkChoice.Protocol.TCP)
         {
             lock (tcpClientWriters)
@@ -276,6 +286,7 @@ public class ServerManager : MonoBehaviour
         EnqueueToMainThread(() => {
             string hostName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY, "Host");
             List<string> playerNames;
+            // TODO remove TCP code
             if(serverMode == NetworkChoice.Protocol.TCP) playerNames = tcpClientNames.Values.ToList();
             else playerNames = udpClientNames.Values.ToList();
 
@@ -301,9 +312,11 @@ public class ServerManager : MonoBehaviour
     void OnApplicationQuit()
     {
         listenerThread?.Abort();
+        // TODO remove TCP code
         if (tcpListener != null) tcpListener.Stop();
         
 
+        // TODO remove TCP code
         lock(tcpClientWriters)
         {
             foreach(var writer in tcpClientWriters.Values) writer.Close();
