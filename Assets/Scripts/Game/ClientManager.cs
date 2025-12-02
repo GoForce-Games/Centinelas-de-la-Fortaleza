@@ -15,13 +15,7 @@ public class ClientManager : MonoBehaviour
     
     private Thread receiveThread;
     public LobbyUI lobbyUI;
-    private NetworkChoice.Protocol clientMode;
     private bool isRunning = false;
-
-    private TcpClient tcpClient;
-
-    private StreamWriter tcpWriter;
-    private StreamReader tcpReader;
 
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
@@ -43,16 +37,14 @@ public class ClientManager : MonoBehaviour
         {
             Debug.LogError("ClientManager no pudo encontrar UIManagerReceptor.");
         }
-        clientMode = NetworkChoice.ChosenProtocol;
         isRunning = true;
         playerName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY);
         
         try
         {
-            Debug.Log($"Iniciando conexión en modo {clientMode} hacia {ipAddress}...");
+            Debug.Log($"Iniciando conexión en modo UDP hacia {ipAddress}...");
             receiveThread = new Thread(() => {
-                if (clientMode == NetworkChoice.Protocol.TCP) ConnectAndReceiveTCP(ipAddress);
-                else ConnectAndReceiveUDP(ipAddress);
+                ConnectAndReceiveUDP(ipAddress);
             });
             receiveThread.IsBackground = true;
             receiveThread.Start();
@@ -76,34 +68,6 @@ public class ClientManager : MonoBehaviour
 
         //Sets the active client instance to this
         instance = this;
-    }
-    
-    private void ConnectAndReceiveTCP(string ip)
-    {
-        try
-        {
-            tcpClient = new TcpClient(ip, NetworkGlobals.GAME_PORT_TCP);
-            NetworkStream stream = tcpClient.GetStream();
-            tcpWriter = new StreamWriter(stream, NetworkGlobals.ENCODING);
-            tcpReader = new StreamReader(stream, NetworkGlobals.ENCODING);
-            
-            EnqueueToMainThread(() => Debug.Log("Conectado al servidor TCP."));
-            
-
-            NetMessage joinMsg = new NetMessage("JOIN", playerName);
-            SendMessageToServer(joinMsg);
-
-
-            string jsonMessage;
-            while (isRunning && (jsonMessage = tcpReader.ReadLine()) != null)
-            {
-                EnqueueToMainThread(jsonMessage);
-            }
-        }
-        catch (System.Exception e)
-        {
-            if (isRunning) EnqueueToMainThread(() => Debug.LogError("Error en cliente TCP: " + e.Message));
-        }
     }
     
     private async void ConnectAndReceiveUDP(string ip)
@@ -217,20 +181,11 @@ public class ClientManager : MonoBehaviour
         
         try
         {
-            if (clientMode == NetworkChoice.Protocol.TCP)
+            lock (udpClient)
             {
-
-                tcpWriter?.WriteLine(jsonMessage);
-                tcpWriter?.Flush();
-            }
-            else
-            {
-                lock (udpClient)
-                {
-                    byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
-                    udpClient?.Send(data, data.Length, serverEndPoint);
-                    EnqueueToMainThread(() => lastPing = Time.time); // Time.time can only be called in main thread
-                }
+                byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
+                udpClient?.Send(data, data.Length, serverEndPoint);
+                EnqueueToMainThread(() => lastPing = Time.time); // Time.time can only be called in main thread
             }
         }
         catch (System.Exception e)
@@ -260,9 +215,6 @@ public class ClientManager : MonoBehaviour
         isRunning = false;
         receiveThread?.Abort();
         
-        tcpWriter?.Close(); 
-        tcpReader?.Close(); 
-        tcpClient?.Close();
         udpClient?.Close();
     }
 }
