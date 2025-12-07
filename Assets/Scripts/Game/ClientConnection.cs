@@ -11,8 +11,9 @@ namespace Game
         public IPEndPoint endPoint;
 
         // Timeout-related variables
-        public CancellationTokenSource connectionToken;
-        public float lastPing;
+        public CancellationTokenSource connectionToken =  new CancellationTokenSource();
+        public float lastSent;
+        public float lastReceived;
         public short consecutiveTimeouts = 0;
         
         public ClientConnection(IPEndPoint endPoint)

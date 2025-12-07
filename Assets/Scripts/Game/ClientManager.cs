@@ -20,7 +20,8 @@ public class ClientManager : MonoBehaviour
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
     private CancellationTokenSource cancelToken = new CancellationTokenSource();
-    private float lastPing = 0;
+    private float lastSent = 0;
+    private float lastReceived = 0;
     [SerializeField] private float pingInterval = 0.5f;
     [SerializeField] private float pingTimeout = 3.0f;
 
@@ -30,18 +31,19 @@ public class ClientManager : MonoBehaviour
     private readonly Queue<Action> actionQueue = new Queue<Action>();
     private readonly Queue<string> messageQueue = new Queue<string>();
 
-    private List<UIManagerReceptor> uiReceptores = new();
+    private NetMessage pingMsg = new NetMessage("PING", "client");
+    private NetMessage pongMsg = new NetMessage("PONG", "client");
 
     public void ConnectToServer(string ipAddress)
     {
-        foreach (var receptor in FindObjectsOfType<UIManagerReceptor>())
-            RegisterUIReceptor(receptor);
+        uiReceptor = FindObjectOfType<UIManagerReceptor>();
         if (uiReceptor == null)
         {
             Debug.LogError("ClientManager no pudo encontrar UIManagerReceptor.");
         }
         isRunning = true;
         playerName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY);
+        pingMsg.msgData = pongMsg.msgData = playerName;
         
         try
         {
@@ -57,9 +59,9 @@ public class ClientManager : MonoBehaviour
             {
                 while (!cancelToken.IsCancellationRequested)
                 {
-                    if ((lastPing + pingInterval) < Time.time && !string.IsNullOrEmpty(playerName))
-                        SendMessageToServer(new NetMessage("PING", playerName));
-                    yield return new WaitForSeconds(pingInterval);
+                    if ((lastSent + pingInterval) < Time.time && !string.IsNullOrEmpty(playerName))
+                        SendMessageToServer(pingMsg);
+                    yield return new WaitForSecondsRealtime(pingInterval);
                 }
             }
             StartCoroutine(PingTimer());
@@ -72,13 +74,7 @@ public class ClientManager : MonoBehaviour
         //Sets the active client instance to this
         instance = this;
     }
-
-    public void RegisterUIReceptor(UIManagerReceptor receptor)
-    {
-        if (!uiReceptores.Contains(receptor))
-            uiReceptores.Add(receptor);
-    }
-
+    
     private async void ConnectAndReceiveUDP(string ip)
     {
         try
@@ -90,14 +86,6 @@ public class ClientManager : MonoBehaviour
 
             NetMessage joinMsg = new NetMessage("JOIN", playerName);
             SendMessageToServer(joinMsg);
-            
-            // while(isRunning)
-            // {
-            //     IPEndPoint anyIp = new IPEndPoint(IPAddress.Any, 0);
-            //     byte[] data = udpClient.Receive(ref anyIp);
-            //     string jsonMessage = NetworkGlobals.ENCODING.GetString(data); 
-            //     EnqueueToMainThread(jsonMessage);
-            // }
 
             while (isRunning)
             {
@@ -106,6 +94,7 @@ public class ClientManager : MonoBehaviour
                 {
                     string jsonMessage = NetworkGlobals.ENCODING.GetString(resultTask.Result.Buffer);
                     EnqueueToMainThread(jsonMessage);
+                    EnqueueToMainThread(() => lastReceived = Time.time);
                 }
                 else
                 {
@@ -157,12 +146,26 @@ public class ClientManager : MonoBehaviour
                 string[] playerNames = msg.msgData.Split(',');
                 lobbyUI.UpdatePlayerList(new List<string>(playerNames));
             }
-            else if (msg.msgType == "UI_Update" )
+            else if (msg.msgType == "UI_Update" || msg.msgType == "Accion1_Clicked")
             {
-                foreach (var receptor in uiReceptores)
+                if (uiReceptor != null)
                 {
-                    receptor.RecibirMensaje(jsonMsg);
+                    // Le pasamos el JSON completo para que él lo procese
+                    uiReceptor.RecibirMensaje(jsonMsg);
                 }
+            }
+            else if (msg.msgType == "PING")
+            {
+                Debug.Log($"<color=blue>CLIENT [PING]:</color> Ping received from {msg.msgData}. Sending pong response");
+                SendMessageToServer(new NetMessage("PONG", msg.msgData));
+            }
+            else if (msg.msgType == "PONG")
+            {
+                Debug.Log($"<color=blue>CLIENT [PONG]:</color> Ping response received from {msg.msgData}");
+            }
+            else
+            {
+                EnqueueToMainThread(()=> Debug.LogWarning($"Comando desconocido: {msg.msgType}\nDatos:\n{msg.msgData}"));
             }
         }
         catch (System.Exception e)
@@ -193,7 +196,7 @@ public class ClientManager : MonoBehaviour
             {
                 byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
                 udpClient?.Send(data, data.Length, serverEndPoint);
-                EnqueueToMainThread(() => lastPing = Time.time); // Time.time can only be called in main thread
+                EnqueueToMainThread(() => lastSent = Time.time); // Time.time can only be called in main thread
             }
         }
         catch (System.Exception e)
