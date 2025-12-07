@@ -30,9 +30,12 @@ public class ClientManager : MonoBehaviour
     private readonly Queue<Action> actionQueue = new Queue<Action>();
     private readonly Queue<string> messageQueue = new Queue<string>();
 
+    private List<UIManagerReceptor> uiReceptores = new();
+
     public void ConnectToServer(string ipAddress)
     {
-        uiReceptor = FindObjectOfType<UIManagerReceptor>();
+        foreach (var receptor in FindObjectsOfType<UIManagerReceptor>())
+            RegisterUIReceptor(receptor);
         if (uiReceptor == null)
         {
             Debug.LogError("ClientManager no pudo encontrar UIManagerReceptor.");
@@ -69,7 +72,13 @@ public class ClientManager : MonoBehaviour
         //Sets the active client instance to this
         instance = this;
     }
-    
+
+    public void RegisterUIReceptor(UIManagerReceptor receptor)
+    {
+        if (!uiReceptores.Contains(receptor))
+            uiReceptores.Add(receptor);
+    }
+
     private async void ConnectAndReceiveUDP(string ip)
     {
         try
@@ -148,12 +157,11 @@ public class ClientManager : MonoBehaviour
                 string[] playerNames = msg.msgData.Split(',');
                 lobbyUI.UpdatePlayerList(new List<string>(playerNames));
             }
-            else if (msg.msgType == "UI_Update" || msg.msgType == "Accion1_Clicked")
+            else if (msg.msgType == "UI_Update" )
             {
-                if (uiReceptor != null)
+                foreach (var receptor in uiReceptores)
                 {
-                    // Le pasamos el JSON completo para que él lo procese
-                    uiReceptor.RecibirMensaje(jsonMsg);
+                    receptor.RecibirMensaje(jsonMsg);
                 }
             }
         }

@@ -27,6 +27,7 @@ namespace Game.InteractionModules
         Integer   = 1 << 2,
         Float     = 1 << 3,
         String    = 1 << 4,
+        
     }
 
     [Serializable]
