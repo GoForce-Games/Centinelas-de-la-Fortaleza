@@ -54,7 +54,7 @@ public class ClientManager : MonoBehaviour
             {
                 while (!cancelToken.IsCancellationRequested)
                 {
-                    if ((lastPing + pingInterval) < Time.time)
+                    if ((lastPing + pingInterval) < Time.time && !string.IsNullOrEmpty(playerName))
                         SendMessageToServer(new NetMessage("PING", playerName));
                     yield return new WaitForSeconds(pingInterval);
                 }
