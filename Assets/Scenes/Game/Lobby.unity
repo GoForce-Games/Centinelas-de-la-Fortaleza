@@ -774,7 +774,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   startButton: {fileID: 450034401}
-  speed: 300
+  movementSpeed: 200
+  rotationSpeed: 10
+  smoothFactor: 10
   leftDistance: 1500
   waitTime: 1
   walkAnim: Walking
