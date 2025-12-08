@@ -8,10 +8,16 @@ using System.Threading;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class ClientManager : MonoBehaviour
 {
     public static ClientManager instance = null;
+
+    public event Action<string> OnChatMessageReceived;
+    public event Action<List<string>> OnPlayerListUpdated;
+    public event Action<string> OnGameStarted;
     
     private Thread receiveThread;
     public LobbyUI lobbyUI;
@@ -20,6 +26,8 @@ public class ClientManager : MonoBehaviour
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
     private CancellationTokenSource cancelToken = new CancellationTokenSource();
+
+
     private float lastSent = 0;
     private float lastReceived = 0;
     [SerializeField] private float pingInterval = 0.5f;
@@ -34,6 +42,19 @@ public class ClientManager : MonoBehaviour
     private NetMessage pingMsg = new NetMessage("PING", "client");
     private NetMessage pongMsg = new NetMessage("PONG", "client");
 
+
+    void Awake()
+        {
+            if (instance == null)
+            {
+                instance = this;
+                DontDestroyOnLoad(gameObject);
+            }
+            else
+            {
+                Destroy(gameObject);
+            }
+        }
     public void ConnectToServer(string ipAddress)
     {
         uiReceptor = FindObjectOfType<UIManagerReceptor>();
@@ -54,7 +75,6 @@ public class ClientManager : MonoBehaviour
             receiveThread.IsBackground = true;
             receiveThread.Start();
 
-            // Ping if no data has been sent within pingInterval
             IEnumerator PingTimer()
             {
                 while (!cancelToken.IsCancellationRequested)
@@ -71,10 +91,23 @@ public class ClientManager : MonoBehaviour
             Debug.LogError("Error al iniciar conexión: " + e.Message);
         }
 
-        //Sets the active client instance to this
+        
         instance = this;
     }
-    
+    public void RegisterGameUI(UIManagerReceptor receptor)
+    {
+        uiReceptor = receptor;
+    }
+
+    IEnumerator PingTimer()
+    {
+        while (!cancelToken.IsCancellationRequested)
+        {
+            if ((lastSent + pingInterval) < Time.time && !string.IsNullOrEmpty(playerName))
+                SendMessageToServer(pingMsg);
+            yield return new WaitForSecondsRealtime(pingInterval);
+        }
+    }
     private async void ConnectAndReceiveUDP(string ip)
     {
         try
@@ -82,7 +115,6 @@ public class ClientManager : MonoBehaviour
             udpClient = new UdpClient();
             serverEndPoint = new IPEndPoint(IPAddress.Parse(ip), NetworkGlobals.GAME_PORT_UDP);
             EnqueueToMainThread(() => Debug.Log("Cliente UDP listo."));
-            
 
             NetMessage joinMsg = new NetMessage("JOIN", playerName);
             SendMessageToServer(joinMsg);
@@ -93,7 +125,7 @@ public class ClientManager : MonoBehaviour
                 if (await Task.WhenAny(resultTask, Task.Delay((int)(pingTimeout * 1000))) == resultTask)
                 {
                     string jsonMessage = NetworkGlobals.ENCODING.GetString(resultTask.Result.Buffer);
-                    EnqueueToMainThread(jsonMessage);
+                    EnqueueToMainThread(jsonMessage); 
                     EnqueueToMainThread(() => lastReceived = Time.time);
                 }
                 else
@@ -104,9 +136,9 @@ public class ClientManager : MonoBehaviour
                 }
             }
         }
-        catch (System.Exception e)
+        catch (Exception e)
         {
-            if (isRunning) EnqueueToMainThread(() => Debug.LogError("Error en cliente UDP: " + e.Message));
+            if (isRunning) EnqueueToMainThread(() => Debug.LogError("Error UDP: " + e.Message));
         }
     }
 
@@ -133,44 +165,48 @@ public class ClientManager : MonoBehaviour
     {
         try
         {
-
             NetMessage msg = JsonUtility.FromJson<NetMessage>(jsonMsg);
             if (msg == null) return;
 
-            if (msg.msgType == "CHAT")
+            switch (msg.msgType)
             {
-                lobbyUI.AddChatMessage(msg.msgData);
-            }
-            else if (msg.msgType == "PLAYERLIST")
-            {
-                string[] playerNames = msg.msgData.Split(',');
-                lobbyUI.UpdatePlayerList(new List<string>(playerNames));
-            }
-            else if (msg.msgType == "UI_Update" || msg.msgType == "Accion1_Clicked")
-            {
-                if (uiReceptor != null)
-                {
-                    // Le pasamos el JSON completo para que él lo procese
-                    uiReceptor.RecibirMensaje(jsonMsg);
-                }
-            }
-            else if (msg.msgType == "PING")
-            {
-                Debug.Log($"<color=blue>CLIENT [PING]:</color> Ping received from {msg.msgData}. Sending pong response");
-                SendMessageToServer(new NetMessage("PONG", msg.msgData));
-            }
-            else if (msg.msgType == "PONG")
-            {
-                Debug.Log($"<color=blue>CLIENT [PONG]:</color> Ping response received from {msg.msgData}");
-            }
-            else
-            {
-                EnqueueToMainThread(()=> Debug.LogWarning($"Comando desconocido: {msg.msgType}\nDatos:\n{msg.msgData}"));
+                case "CHAT":
+
+                    OnChatMessageReceived?.Invoke(msg.msgData);
+                    break;
+
+                case "PLAYERLIST":
+                    string[] playerNames = msg.msgData.Split(',');
+
+                    OnPlayerListUpdated?.Invoke(new List<string>(playerNames));
+                    break;
+                
+                case "START_GAME":
+
+                    SceneManager.LoadScene("GameScene");
+                    break;
+
+                case "UI_Update":
+                case "Accion1_Clicked":
+                    if (uiReceptor == null) uiReceptor = FindObjectOfType<UIManagerReceptor>();
+                    if (uiReceptor != null) uiReceptor.RecibirMensaje(jsonMsg);
+                    break;
+
+                case "PING":
+                    SendMessageToServer(new NetMessage("PONG", msg.msgData));
+                    break;
+
+                case "PONG":
+                    break;
+
+                default:
+                    Debug.LogWarning($"Comando desconocido: {msg.msgType}");
+                    break;
             }
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning("Error al deserializar mensaje del servidor: " + e.Message + " | JSON: " + jsonMsg);
+            Debug.LogWarning("Error deserializar: " + e.Message);
         }
     }
 
@@ -188,7 +224,12 @@ public class ClientManager : MonoBehaviour
     {
         string jsonMessage = JsonUtility.ToJson(msg); 
 
-        Debug.Log("<color=cyan>CLIENT [SENT]:</color> " + jsonMessage);
+        if (udpClient == null) return;
+
+if (msg.msgType != "PING" && msg.msgType != "PONG")
+        {
+            Debug.Log("<color=cyan>CLIENT [SENT]:</color> " + jsonMessage);
+        }
         
         try
         {
@@ -221,11 +262,10 @@ public class ClientManager : MonoBehaviour
         }
     }
 
-    void OnApplicationQuit()
+   void OnApplicationQuit()
     {
         isRunning = false;
         receiveThread?.Abort();
-        
         udpClient?.Close();
     }
 }

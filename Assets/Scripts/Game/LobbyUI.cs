@@ -7,6 +7,7 @@ using TMPro;
 
 public class LobbyUI : MonoBehaviour
 {
+    [Header("UI References")]
     public GameObject connectPanel;
     public GameObject lobbyPanel;
     public TMP_InputField ipAddressInput;
@@ -18,6 +19,8 @@ public class LobbyUI : MonoBehaviour
     public Button sendMessageButton;
     public TMP_Text serverInfoText;
     
+    public Button startGameButton; 
+
     [Header("Indicador de Modo")]
     public TMP_Text protocolModeText;
 
@@ -27,47 +30,112 @@ public class LobbyUI : MonoBehaviour
 
     void Start()
     {
-        isHost = FindObjectOfType<HostMarker>() != null;
-        if (isHost) Destroy(FindObjectOfType<HostMarker>().gameObject);
+        GameObject hostMarker = FindObjectOfType<HostMarker>()?.gameObject;
+        isHost = hostMarker != null;
         
         if (protocolModeText != null)
-        {
-            protocolModeText.text = $"Modo: {NetworkChoice.ChosenProtocol.ToString()}";
-        }
-
-        if (isHost) SetupHost();
-        else SetupClient();
+            protocolModeText.text = "Modo: UDP";
 
         connectButton.onClick.AddListener(OnConnectClicked);
         sendMessageButton.onClick.AddListener(OnSendMessageClicked);
+        
+        if (startGameButton != null)
+        {
+            startGameButton.gameObject.SetActive(false); 
+            startGameButton.onClick.AddListener(OnStartGameClicked);
+        }
+
+        if (isHost)
+        {
+            SetupHost();
+            if (hostMarker != null) Destroy(hostMarker); 
+        }
+        else
+        {
+            SetupClient();
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (ClientManager.instance != null)
+        {
+            ClientManager.instance.OnChatMessageReceived -= AddChatMessage;
+            ClientManager.instance.OnPlayerListUpdated -= UpdatePlayerListUI;
+        }
     }
 
     private void SetupHost()
     {
         connectPanel.SetActive(false);
         lobbyPanel.SetActive(true);
-        serverManager = gameObject.AddComponent<ServerManager>();
-        serverManager.lobbyUI = this;
+        if (startGameButton != null) startGameButton.gameObject.SetActive(true);
+
+        if (FindObjectOfType<ServerManager>() == null)
+        {
+            GameObject serverObj = new GameObject("ServerManager");
+            serverManager = serverObj.AddComponent<ServerManager>();
+            DontDestroyOnLoad(serverObj); 
+        }
+        else
+        {
+            serverManager = FindObjectOfType<ServerManager>();
+        }
+
         serverInfoText.text = $"Tu IP es: {GetLocalIPAddress()}";
         serverInfoText.gameObject.SetActive(true);
+
+        SetupClient(); 
+        
+        OnConnectClicked("127.0.0.1");
     }
 
     private void SetupClient()
     {
-        connectPanel.SetActive(true);
-        lobbyPanel.SetActive(false);
-        serverInfoText.gameObject.SetActive(false);
-        clientManager = gameObject.AddComponent<ClientManager>();
-        clientManager.lobbyUI = this;
+        if (ClientManager.instance == null)
+        {
+            GameObject clientObj = new GameObject("ClientManager");
+            clientManager = clientObj.AddComponent<ClientManager>();
+            DontDestroyOnLoad(clientObj);
+        }
+        else
+        {
+            clientManager = ClientManager.instance;
+            connectPanel.SetActive(false);
+            lobbyPanel.SetActive(true);
+        }
+
+        ClientManager.instance.OnChatMessageReceived += AddChatMessage;
+        ClientManager.instance.OnPlayerListUpdated += UpdatePlayerListUI;
+        
+        if (!isHost)
+        {
+            connectPanel.SetActive(true);
+            lobbyPanel.SetActive(false);
+            serverInfoText.gameObject.SetActive(false);
+        }
     }
 
     private void OnConnectClicked()
     {
         string ip = ipAddressInput.text;
         if (string.IsNullOrWhiteSpace(ip)) ip = "127.0.0.1";
-        clientManager.ConnectToServer(ip);
+        OnConnectClicked(ip);
+    }
+
+    private void OnConnectClicked(string ip)
+    {
+        ClientManager.instance.ConnectToServer(ip);
         connectPanel.SetActive(false);
         lobbyPanel.SetActive(true);
+    }
+
+    private void OnStartGameClicked()
+    {
+        if(isHost && serverManager != null)
+        {
+            serverManager.StartGame(); 
+        }
     }
 
     private void OnSendMessageClicked()
@@ -75,21 +143,14 @@ public class LobbyUI : MonoBehaviour
         string message = chatMessageInput.text;
         if (!string.IsNullOrWhiteSpace(message))
         {
-            if (isHost)
-            {
-                serverManager.HandleHostMessage(message);
-            }
-            else
-            {
-                clientManager.SendChatMessage(message);
-            }
+            ClientManager.instance.SendChatMessage(message);
             chatMessageInput.text = "";
         }
     }
 
-    public void UpdatePlayerList(List<string> playerNames)
+    private void UpdatePlayerListUI(List<string> playerNames)
     {
-        string protocolString = NetworkChoice.ChosenProtocol.ToString();
+        string protocolString = "UDP";
         playerListText.text = $"Jugadores en la sala ({protocolString}):\n";
         
         foreach (var name in playerNames)
@@ -98,16 +159,9 @@ public class LobbyUI : MonoBehaviour
         }
     }
 
-    public void AddChatMessage(string message)
+    private void AddChatMessage(string message)
     {
         chatHistoryText.text += message + "\n";
-    }
-
-    public void ShowConnectionError(string message)
-    {
-        connectPanel.SetActive(true);
-        lobbyPanel.SetActive(false);
-        errorText.text = message;
     }
 
     public static string GetLocalIPAddress()
