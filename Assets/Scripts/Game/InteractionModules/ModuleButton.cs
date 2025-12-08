@@ -12,8 +12,9 @@ public class ModuleButton : InteractableModule
     {
         base.Start();
         _moduleData.moduleName = "ModuleButton";
-        _moduleData.ValueTypes = SentDataTypes.Integer; 
+        _moduleData.ValueTypes = SentDataTypes.Integer | SentDataTypes.Bool; 
         _moduleData.intValue = 0;
+        _moduleData.boolValue = true;
 
         button.onClick.AddListener(OnButtonPressed);
     }

@@ -44,8 +44,8 @@ public class PlayerMovement : MonoBehaviour
 
         SetState(MovementState.Idle);
 
-        if (startButton != null)
-            startButton.onClick.AddListener(OnStartButtonPressed);
+        // if (startButton != null)
+        //     startButton.onClick.AddListener(OnStartButtonPressed);
     }
 
     void Update()

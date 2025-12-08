@@ -112,11 +112,8 @@ namespace Game
 
         public static void ClientProcessReceive(NetMessage message)
         {
-            lock (clientSide)
-            {
                 ModuleNetPacket messagesReceived = JsonUtility.FromJson<ModuleNetPacket>(message.msgData);
                 messagesReceived.moduleList.ForEach(Instance.ClientProcessModule);
-            }
         }
 
         private void ClientProcessModule(ModuleData moduleData)

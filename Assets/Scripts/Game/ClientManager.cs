@@ -8,6 +8,7 @@ using System.Threading;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using Game;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -197,6 +198,10 @@ public class ClientManager : MonoBehaviour
                     break;
 
                 case "PONG":
+                    break;
+                
+                case NetworkGlobals.MODULE_MANAGER_EVENT_KEY:
+                    ModuleManager.ClientProcessReceive(msg);
                     break;
 
                 default:
