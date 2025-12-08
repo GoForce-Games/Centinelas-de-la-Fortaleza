@@ -22,4 +22,9 @@ public class ModuleButton : InteractableModule
         _moduleData.intValue++;  
         SendMessageToManager();
     }
+
+    public override void UpdateState(ModuleData data)
+    {
+        throw new System.NotImplementedException();
+    }
 }

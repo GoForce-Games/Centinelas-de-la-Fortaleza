@@ -20,4 +20,9 @@ public class ModuleSlider : InteractableModule
         _moduleData.floatValue = value;
         SendMessageToManager();
     }
+
+    public override void UpdateState(ModuleData data)
+    {
+        throw new System.NotImplementedException();
+    }
 }

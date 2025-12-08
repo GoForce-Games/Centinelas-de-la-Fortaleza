@@ -20,4 +20,9 @@ public class ModuleToggle : InteractableModule
         _moduleData.boolValue = value;
         SendMessageToManager();
     }
+
+    public override void UpdateState(ModuleData data)
+    {
+        throw new System.NotImplementedException();
+    }
 }

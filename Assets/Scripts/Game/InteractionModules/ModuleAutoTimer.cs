@@ -39,4 +39,9 @@ public class ModuleAutoTimer : InteractableModule
         _timeLeft -= Time.deltaTime;
         timerText.text = _timeLeft.ToString();
     }
+
+    public override void UpdateState(ModuleData data)
+    {
+        throw new NotImplementedException();
+    }
 }

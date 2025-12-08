@@ -12,10 +12,22 @@ namespace Game.InteractionModules
         
         protected NetMessage Msg;
 
-        public void SendMessageToManager()
+        protected void Start()
+        {
+            ModuleManager.AddModule(this);
+        }
+
+        protected void OnDestroy()
+        {
+            ModuleManager.RemoveModule(this);
+        }
+
+        protected void SendMessageToManager()
         {
             ModuleManager.QueueMessage(_moduleData);
         }
+
+        public abstract void UpdateState(ModuleData data);
     }
     
     
