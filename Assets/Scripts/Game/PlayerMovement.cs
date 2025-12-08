@@ -89,6 +89,8 @@ public class PlayerMovement : MonoBehaviour
                 break;
         }
     }
+    
+    public MovementState GetState() =>  currentState;
 
     void ProcessStateLogic()
     {

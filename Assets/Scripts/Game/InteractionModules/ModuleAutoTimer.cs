@@ -14,8 +14,9 @@ public class ModuleAutoTimer : InteractableModule
     [SerializeField] private float timeToWait;
     private float _timeLeft;
     
-    void Start()
+    private new void Start()
     {
+        base.Start();
         _moduleData.moduleName = "ModuleAutoTimer";
         _timeLeft = timeToWait;
 
@@ -42,6 +43,5 @@ public class ModuleAutoTimer : InteractableModule
 
     public override void UpdateState(ModuleData data)
     {
-        throw new NotImplementedException();
     }
 }

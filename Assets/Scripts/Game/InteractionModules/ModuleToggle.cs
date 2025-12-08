@@ -7,8 +7,9 @@ public class ModuleToggle : InteractableModule
 {
     [SerializeField] private Toggle toggle;
 
-    private void Start()
+    private new void Start()
     {
+        base.Start();
         _moduleData.moduleName = "ModuleToggle";
         _moduleData.ValueTypes = SentDataTypes.Bool;
 
@@ -23,6 +24,5 @@ public class ModuleToggle : InteractableModule
 
     public override void UpdateState(ModuleData data)
     {
-        throw new System.NotImplementedException();
     }
 }

@@ -9,12 +9,14 @@ namespace Game
 {
     // ModuleData wrapper for serialization purposes
     [Serializable]
-    public class ModuleDataList
+    public class ModuleNetPacket
     {
         public string sourcePlayer;
-        public List<ModuleData> moduleList;
-
-        public ModuleDataList(string player, ModuleData[] list)
+        public List<ModuleData> moduleList = new List<ModuleData>();
+        public bool broadcast = false;
+        
+        
+        public ModuleNetPacket(string player, ModuleData[] list)
         {
             sourcePlayer = player;
             moduleList = new List<ModuleData>(list);
@@ -34,37 +36,46 @@ namespace Game
         [SerializeField] private List<InteractableModule> _modules = new List<InteractableModule>();
         
         private Dictionary<int, ModuleData> messagesToSend = new ();
-        
-        public static void AddModule(InteractableModule module) => _instance._modules.Add(module);
-        public static void RemoveModule(InteractableModule module) => _instance._modules.Remove(module);
+
+        public static ModuleManager Instance
+        {
+            get => (_instance != null ? _instance :  _instance = FindObjectOfType<ModuleManager>());
+            private set => _instance = value;
+        }
+
+        public static void AddModule(InteractableModule module) => Instance._modules.Add(module);
+        public static void RemoveModule(InteractableModule module) => Instance?._modules.Remove(module);
 
         public static int GetNextID() => _idCounter++;
-        
-        public static void QueueMessage(ModuleData moduleData)
-        {
-            lock (clientSide)
-            {
-                _instance.messagesToSend[moduleData.moduleId] = moduleData;
-            }
-        }
 
         private void Start()
         {
             // Single instance active at any time
             if (!_instance) _instance = this;
-            else Destroy(this);
+            else if (_instance != this) Destroy(this);
             
             StartCoroutine(ClientProcessSend());
         }
-        
+
+        #region Server Code
+
         // Processes messages received from clients (WIP)
         public static void ServerProcessReceive(NetMessage message)
         {
-            lock (serverSide)
-            {
-                ModuleDataList messagesReceived = JsonUtility.FromJson<ModuleDataList>(message.msgData);
+                ModuleNetPacket messagesReceived = JsonUtility.FromJson<ModuleNetPacket>(message.msgData);
                 messagesReceived.moduleList.ForEach(m => Debug.Log($"Received data from {messagesReceived.sourcePlayer}: {m.ToString()}"));
-                //ServerManager.instance.BroadcastMessage(message);
+                ServerManager.instance?.BroadcastMessage(message);
+        }
+
+        #endregion
+
+        #region Client code
+
+        public static void QueueMessage(ModuleData moduleData)
+        {
+            lock (clientSide)
+            {
+                Instance.messagesToSend[moduleData.moduleId] = moduleData;
             }
         }
 
@@ -83,7 +94,7 @@ namespace Game
                 else lock (clientSide)
                 {
                     // Pack all queued messages along with the player's alias
-                    var auxList = new ModuleDataList(ClientManager.instance.playerName, messagesToSend.Values.ToArray());
+                    var auxList = new ModuleNetPacket(ClientManager.instance.playerName, messagesToSend.Values.ToArray());
                     msg.msgData = JsonUtility.ToJson(auxList);
 
                     lock (ClientManager.instance)
@@ -91,7 +102,7 @@ namespace Game
                         ClientManager.instance.SendMessageToServer(msg);
                     }
                     
-                    _instance.messagesToSend.Clear();
+                    Instance.messagesToSend.Clear();
                     
                     yield return null;
                 }
@@ -103,11 +114,21 @@ namespace Game
         {
             lock (clientSide)
             {
-                ModuleDataList messagesReceived = JsonUtility.FromJson<ModuleDataList>(message.msgData);
-                messagesReceived.moduleList.ForEach(m => Debug.Log($"Received data from {messagesReceived.sourcePlayer}: {m.ToString()}"));
-
+                ModuleNetPacket messagesReceived = JsonUtility.FromJson<ModuleNetPacket>(message.msgData);
+                messagesReceived.moduleList.ForEach(Instance.ClientProcessModule);
             }
         }
+
+        private void ClientProcessModule(ModuleData moduleData)
+        {
+            // Temporary code, part of proper game logic will be implemented here
+            var monigote = _modules.OfType<MonigoteModule>().FirstOrDefault();
+            
+            monigote?.UpdateState(moduleData);
+            
+        }
+
+        #endregion
         
     }
 }

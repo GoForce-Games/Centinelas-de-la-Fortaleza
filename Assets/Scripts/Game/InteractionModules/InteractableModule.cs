@@ -45,6 +45,7 @@ namespace Game.InteractionModules
     [Serializable]
     public class ModuleData
     {
+        public int netId = -1;
         public int moduleId = ModuleManager.GetNextID();
         public string moduleName = "DEFAULT MODULE";
 

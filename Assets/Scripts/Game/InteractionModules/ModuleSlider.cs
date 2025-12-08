@@ -7,8 +7,9 @@ public class ModuleSlider : InteractableModule
 {
     [SerializeField] private Slider slider;
 
-    private void Start()
+    private new void Start()
     {
+        base.Start();
         _moduleData.moduleName = "ModuleSlider";
         _moduleData.ValueTypes = SentDataTypes.Float;
 
@@ -23,6 +24,5 @@ public class ModuleSlider : InteractableModule
 
     public override void UpdateState(ModuleData data)
     {
-        throw new System.NotImplementedException();
     }
 }

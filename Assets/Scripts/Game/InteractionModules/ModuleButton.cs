@@ -8,8 +8,9 @@ public class ModuleButton : InteractableModule
 {
     [SerializeField] private Button button;
 
-    private void Start()
+    private new void Start()
     {
+        base.Start();
         _moduleData.moduleName = "ModuleButton";
         _moduleData.ValueTypes = SentDataTypes.Integer; 
         _moduleData.intValue = 0;
@@ -25,6 +26,5 @@ public class ModuleButton : InteractableModule
 
     public override void UpdateState(ModuleData data)
     {
-        throw new System.NotImplementedException();
     }
 }
