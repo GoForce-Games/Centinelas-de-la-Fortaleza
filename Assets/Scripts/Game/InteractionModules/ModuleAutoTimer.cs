@@ -14,8 +14,9 @@ public class ModuleAutoTimer : InteractableModule
     [SerializeField] private float timeToWait;
     private float _timeLeft;
     
-    void Start()
+    private new void Start()
     {
+        base.Start();
         _moduleData.moduleName = "ModuleAutoTimer";
         _timeLeft = timeToWait;
 
@@ -38,5 +39,9 @@ public class ModuleAutoTimer : InteractableModule
         // Update UI
         _timeLeft -= Time.deltaTime;
         timerText.text = _timeLeft.ToString();
+    }
+
+    public override void UpdateState(ModuleData data)
+    {
     }
 }

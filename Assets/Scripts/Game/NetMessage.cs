@@ -1,5 +1,7 @@
 
 
+using UnityEngine;
+
 [System.Serializable]
 public class NetMessage
 {
@@ -13,5 +15,17 @@ public class NetMessage
     {
         this.msgType = type;
         this.msgData = data;
+    }
+
+    public byte[] ToBytes()
+    {
+        string jsonMessage = JsonUtility.ToJson(this);
+        return NetworkGlobals.ENCODING.GetBytes(jsonMessage);
+    }
+
+    public static NetMessage FromBytes(byte[] bytes)
+    {
+        string jsonMessage = NetworkGlobals.ENCODING.GetString(bytes);
+        return JsonUtility.FromJson<NetMessage>(jsonMessage);
     }
 }

@@ -1,46 +1,61 @@
+using System;
+using System.Collections;
 using UnityEngine;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Collections.Generic;
 using System.Linq;
-using System.IO;
 using Game;
 
 public class ServerManager : MonoBehaviour
 {
     public static ServerManager instance = null;
+
+    public event Action<string> OnServerLog;
     
     private Thread listenerThread;
-    public LobbyUI lobbyUI;
-    private NetworkChoice.Protocol serverMode;
+    
     private readonly Queue<System.Action> mainThreadActions = new Queue<System.Action>();
 
-    private TcpListener tcpListener;
-    private readonly List<TcpClient> tcpClients = new List<TcpClient>();
-    private readonly Dictionary<TcpClient, string> tcpClientNames = new Dictionary<TcpClient, string>();
-
-    private readonly Dictionary<TcpClient, StreamWriter> tcpClientWriters = new Dictionary<TcpClient, StreamWriter>();
-
     private UdpClient udpListener;
-    private readonly List<IPEndPoint> udpClients = new List<IPEndPoint>();
-    private readonly Dictionary<IPEndPoint, string> udpClientNames = new Dictionary<IPEndPoint, string>();
 
+    private List<ClientConnection> clients = new List<ClientConnection>();
+    
+    [SerializeField] private float pingInterval = 0.5f;
+    [SerializeField] private float pingTimeout = 3.0f;
+    [SerializeField] private short maxRetries = 3;
+    
+    private byte[] pingMsg = NetworkGlobals.ENCODING.GetBytes("{\"msgType\":\"PING\",\"msgData\":\"host\"}");
+    private byte[] pongMsg = NetworkGlobals.ENCODING.GetBytes("{\"msgType\":\"PONG\",\"msgData\":\"host\"}");
+    
+    void Awake()
+    {
+        if (instance == null)
+        {
+            instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
+    } 
+    
     void Start()
     {
-        serverMode = NetworkChoice.ChosenProtocol;
-        
-        listenerThread = new Thread(() => {
-            if (serverMode == NetworkChoice.Protocol.TCP) ListenForTcpClients();
-            else ListenForUdpPackets();
-        });
+        listenerThread = new Thread(ListenForUdpPackets);
         listenerThread.IsBackground = true;
         listenerThread.Start();
         
-        instance = this;
+        Log("Servidor iniciado.");
+    }
 
-        UpdatePlayerListForAll();
+    public void StartGame()
+    {
+        NetMessage startMsg = new NetMessage("START_GAME", "MainGame");
+        BroadcastMessage(startMsg);
     }
 
     void Update()
@@ -54,76 +69,6 @@ public class ServerManager : MonoBehaviour
         }
     }
 
-    private void ListenForTcpClients()
-    {
-        try
-        {
-            tcpListener = new TcpListener(IPAddress.Any, NetworkGlobals.GAME_PORT_TCP);
-            tcpListener.Start();
-            EnqueueToMainThread(() => Debug.Log($"Servidor TCP escuchando en el puerto {NetworkGlobals.GAME_PORT_TCP}"));
-
-            while (true)
-            {
-                TcpClient client = tcpListener.AcceptTcpClient();
-                lock (tcpClients) { tcpClients.Add(client); }
-                
-                Thread clientThread = new Thread(new ParameterizedThreadStart(HandleTcpClientComm));
-                clientThread.IsBackground = true;
-                clientThread.Start(client);
-            }
-        }
-        catch (System.Exception e) { EnqueueToMainThread(() => Debug.LogError("Error en listener TCP: " + e.Message)); }
-    }
-
-    private void HandleTcpClientComm(object clientObj)
-    {
-        TcpClient tcpClient = (TcpClient)clientObj;
-        NetworkStream stream = tcpClient.GetStream();
-        StreamReader reader = new StreamReader(stream, Encoding.ASCII);
-        StreamWriter writer = new StreamWriter(stream, Encoding.ASCII);
-
-
-        lock(tcpClientWriters)
-        {
-            tcpClientWriters.Add(tcpClient, writer);
-        }
-        
-        try
-        {
-
-             string jsonMessage;
-             while ((jsonMessage = reader.ReadLine()) != null)
-             {
-                 ProcessMessage(jsonMessage, tcpClient);
-             }
-        }
-        catch { }
-        finally
-        {
-            string name = "Un jugador";
-            if (tcpClientNames.TryGetValue(tcpClient, out name))
-            {
-                EnqueueToMainThread(() => HandlePlayerDisconnect(name));
-            }
-            
-
-            lock (tcpClients) 
-            {
-                tcpClients.Remove(tcpClient);
-                tcpClientNames.Remove(tcpClient);
-            }
-            lock (tcpClientWriters)
-            {
-                tcpClientWriters.Remove(tcpClient);
-            }
-            
-            writer.Close();
-            reader.Close();
-            tcpClient.Close();
-            UpdatePlayerListForAll();
-        }
-    }
-
     private void ListenForUdpPackets()
     {
         try
@@ -131,58 +76,73 @@ public class ServerManager : MonoBehaviour
             udpListener = new UdpClient(NetworkGlobals.GAME_PORT_UDP);
             EnqueueToMainThread(() => Debug.Log($"Servidor UDP escuchando en el puerto {NetworkGlobals.GAME_PORT_UDP}"));
 
+            ClientConnection connection = null;
             while (true)
             {
                 IPEndPoint clientEndPoint = new IPEndPoint(IPAddress.Any, 0);
                 byte[] data = udpListener.Receive(ref clientEndPoint);
                 
-                if (!udpClients.Contains(clientEndPoint))
+                lock(clients)
                 {
-                    lock(udpClients) { udpClients.Add(clientEndPoint); }
-                    EnqueueToMainThread(() => Debug.Log($"Nuevo cliente UDP contactó desde: {clientEndPoint}"));
+                    connection = clients.FirstOrDefault(c => c.endPoint.Equals(clientEndPoint));
+                    if (connection == null)
+                    {
+                        connection = new ClientConnection(clientEndPoint);
+                        clients.Add(connection);
+
+                        EnqueueToMainThread(() => OnClientConnected(connection));
+                    }
                 }
 
-                string jsonMessage = Encoding.ASCII.GetString(data); 
-                ProcessMessage(jsonMessage, clientEndPoint);
+                NetMessage msg = null;
+                try
+                {
+                    msg = NetMessage.FromBytes(data);
+                }
+                catch (Exception e)
+                {
+                    EnqueueToMainThread(() => Debug.LogError("<color=red>SERVER [RECV]:</color> Error deserializing: " + e.Message));
+                }
+                
+                if (msg != null)
+                {
+                    EnqueueToMainThread(()=> OnMessageReceived(msg, connection));
+                    ProcessMessage(msg, connection);
+                }
             }
         }
-        catch (System.Exception e) { EnqueueToMainThread(() => Debug.LogError("Error en listener UDP: " + e.Message)); }
+        catch (System.Exception e) { EnqueueToMainThread(() => Debug.LogError("<color=red>SERVER [RECV]:</color> Error UDP listener: " + e.Message)); }
     }
     
-    private void ProcessMessage(string jsonMsg, object sender)
+    private void ProcessMessage(NetMessage msg, ClientConnection sender)
     {
-        Debug.Log("<color=yellow>SERVER [RECV]:</color> " + jsonMsg);
-        NetMessage msg;
-        try
-        {
-
-            msg = JsonUtility.FromJson<NetMessage>(jsonMsg);
-            if (msg == null) return;
-        }
-        catch (System.Exception e)
-        {
-            EnqueueToMainThread(() => Debug.LogWarning("Error al deserializar mensaje de cliente: " + e.Message + " | JSON: " + jsonMsg));
-            return;
-        }
+        // Debug.Log("<color=yellow>SERVER [RECV]:</color> " + msg.msgType);
 
         if (msg.msgType == "JOIN")
         {
             string senderName = msg.msgData;
-            if (serverMode == NetworkChoice.Protocol.TCP) tcpClientNames[(TcpClient)sender] = senderName;
-            else udpClientNames[(IPEndPoint)sender] = senderName;
+            lock (clients)
+            {
+                sender.name = senderName; 
+                EnqueueToMainThread(() => { lock (clients) sender.lastReceived = Time.time; });
+            }
+            HandlePlayerJoin(sender);
+        }
+        else if (msg.msgType == "LEAVE")
+        {
+            HandlePlayerDisconnect(sender);
+        }
+        else if (msg.msgType == "PING")
+        {
+            SendToClient(pongMsg, sender);
+        }
+        else if (msg.msgType == "PONG")
+        {
 
-            HandlePlayerJoin(senderName);
         }
         else if (msg.msgType == "CHAT")
         {
-            string senderName = "Desconocido";
-            if (serverMode == NetworkChoice.Protocol.TCP) senderName = tcpClientNames.ContainsKey((TcpClient)sender) ? tcpClientNames[(TcpClient)sender] : senderName;
-            else senderName = udpClientNames.ContainsKey((IPEndPoint)sender) ? udpClientNames[(IPEndPoint)sender] : senderName;
-
-            string formattedMessage = $"{senderName}: {msg.msgData}";
-            EnqueueToMainThread(() => lobbyUI.AddChatMessage(formattedMessage));
-
-
+            string formattedMessage = $"{sender.name}: {msg.msgData}";
             BroadcastMessage(new NetMessage("CHAT", formattedMessage));
         }
         else if (msg.msgType == "UI_Update" || msg.msgType == "Accion1_Clicked")
@@ -195,77 +155,66 @@ public class ServerManager : MonoBehaviour
         }
         else
         {
-            EnqueueToMainThread(()=> Debug.LogWarning($"Comando desconocido: {msg.msgType}\nDatos:\n{msg.msgData}"));
+            Debug.LogWarning($"Comando desconocido: {msg.msgType}");
         }
     }
     
-    public void HandleHostMessage(string message)
-    {
-        string hostName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY, "Host");
-        string formattedMessage = $"{hostName}: {message}";
-        lobbyUI.AddChatMessage(formattedMessage);
-        
-
-        BroadcastMessage(new NetMessage("CHAT", formattedMessage));
-    }
-
-    private void HandlePlayerJoin(string name)
+    private void HandlePlayerJoin(ClientConnection cc)
     {
         EnqueueToMainThread(() => {
-            string joinMessage = $"{name} se ha unido a la sala.";
-            lobbyUI.AddChatMessage(joinMessage);
+            string joinMessage = $"{cc.name} se ha unido a la sala.";
+            Log(joinMessage);
             
-
             BroadcastMessage(new NetMessage("CHAT", joinMessage));
+            
             UpdatePlayerListForAll();
         });
     }
 
-    private void HandlePlayerDisconnect(string name)
+    private void HandlePlayerDisconnect(ClientConnection cc)
     {
-        string leaveMessage = $"{name} ha abandonado la sala.";
-        lobbyUI.AddChatMessage(leaveMessage);
+        string leaveMessage = $"{cc.name} ha abandonado la sala.";
+        Log(leaveMessage);
+
+        cc.connectionToken.Cancel();
         
+        lock (clients)
+            clients.Remove(cc);
 
         BroadcastMessage(new NetMessage("CHAT", leaveMessage));
+        UpdatePlayerListForAll();
     }
 
+    public void SendToClient(NetMessage msg, ClientConnection cc)
+    {
+        byte[] data = msg.ToBytes();
+        SendToClient(data, cc);
+    }
+
+    public void SendToClient(byte[] bytes, ClientConnection cc)
+    {
+        if (udpListener != null)
+        {
+            udpListener.Send(bytes, bytes.Length, cc.endPoint);
+            EnqueueToMainThread(()=> OnSendMessageToClient(cc));
+        }
+    }
+    
     public void BroadcastMessage(NetMessage msg)
     {
-        string jsonMessage = JsonUtility.ToJson(msg);
-
-        if (serverMode == NetworkChoice.Protocol.TCP)
+        byte[] data =  msg.ToBytes();
+        
+        lock (clients)
         {
-            lock (tcpClientWriters)
+            foreach (var clientConnection in clients)
             {
-
-                var writers = tcpClientWriters.Values.ToList();
-                foreach (var writer in writers)
+                try
                 {
-                    try
-                    {
-
-                        writer.WriteLine(jsonMessage);
-                        writer.Flush();
-                    } catch (System.Exception e) {
-                        EnqueueToMainThread(() => Debug.LogWarning("Error al broadcastear a cliente TCP: " + e.Message));
-                    }
+                    SendToClient(data, clientConnection);
                 }
-            }
-        }
-        else
-        {
-            byte[] data = Encoding.ASCII.GetBytes(jsonMessage);
-            lock (udpClients)
-            {
-                foreach (var clientEndPoint in udpClients)
+                catch (Exception e)
                 {
-                    try
-                    {
-                        udpListener.Send(data, data.Length, clientEndPoint);
-                    } catch (System.Exception e) {
-                        EnqueueToMainThread(() => Debug.LogWarning("Error al broadcastear a cliente UDP: " + e.Message));
-                    }
+                    EnqueueToMainThread(() => Debug.LogWarning($"Error broadcast a {clientConnection.name}: {e.Message}"));
                 }
             }
         }
@@ -274,16 +223,11 @@ public class ServerManager : MonoBehaviour
     private void UpdatePlayerListForAll()
     {
         EnqueueToMainThread(() => {
-            string hostName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY, "Host");
             List<string> playerNames;
-            if(serverMode == NetworkChoice.Protocol.TCP) playerNames = tcpClientNames.Values.ToList();
-            else playerNames = udpClientNames.Values.ToList();
-
-            playerNames.Insert(0, hostName);
-            
-            lobbyUI.UpdatePlayerList(playerNames);
-            
-
+            lock(clients)
+            {
+                playerNames = clients.Select(c => c.name).ToList();
+            }
 
             string listData = string.Join(",", playerNames);
             BroadcastMessage(new NetMessage("PLAYERLIST", listData));
@@ -298,16 +242,64 @@ public class ServerManager : MonoBehaviour
         }
     }
 
+    private void Log(string msg)
+    {
+        OnServerLog?.Invoke(msg);
+        Debug.Log("[SERVER] " + msg);
+    }
+
+    void OnClientConnected(ClientConnection clientConnection)
+    {
+        IEnumerator ClientPing()
+        {
+            while (true)
+            {
+                if (clientConnection.connectionToken.IsCancellationRequested) break;
+                yield return new WaitForSecondsRealtime(pingInterval);
+                
+                if (clientConnection.lastSent + pingTimeout < Time.time)
+                {
+                    lock (clients) SendToClient(pingMsg, clientConnection);
+                }
+                else
+                {
+                    OnClientTimeout(clientConnection);
+                }
+            }
+        }       
+        StartCoroutine(ClientPing());
+        Log($"Nuevo cliente desde: {clientConnection.endPoint}");
+    }
+
+    void OnMessageReceived(NetMessage msg, ClientConnection sender)
+    {
+        sender.lastReceived = Time.time;
+    }
+
+    void OnSendMessageToClient(ClientConnection clientConnection)
+    {
+        lock(clients)
+            clientConnection.lastSent = Time.time;
+
+        clientConnection.consecutiveTimeouts = 0;
+    }
+    
+    void OnClientTimeout(ClientConnection cc)
+    {
+        if (cc.consecutiveTimeouts >= maxRetries)
+        {
+            Debug.LogWarning($"<color=yellow>SERVER [WARN]:</color> Cliente {cc.name} ({cc.endPoint}) desconectado (TIMEOUT)");
+            HandlePlayerDisconnect(cc);
+        }
+        else
+        {
+            cc.consecutiveTimeouts++;
+        }
+    }
+
     void OnApplicationQuit()
     {
         listenerThread?.Abort();
-        if (tcpListener != null) tcpListener.Stop();
-        
-
-        lock(tcpClientWriters)
-        {
-            foreach(var writer in tcpClientWriters.Values) writer.Close();
-        }
         
         if (udpListener != null) udpListener.Close();
     }
