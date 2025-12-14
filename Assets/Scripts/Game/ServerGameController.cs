@@ -20,8 +20,23 @@ public class ServerGameController : MonoBehaviour
     private Dictionary<int, TaskData> activeTasks = new Dictionary<int, TaskData>();
     private Dictionary<string, int> playerScores = new Dictionary<string, int>();
     
-    private string[] actions = { "Pulsar", "Activar", "Calibrar", "Purgar", "Invertir" };
-    private string[] systems = { "Motor", "Escudo", "Radar", "Bobina", "Filtro", "Nucleo" };
+    private string[] actions = { 
+    "Izar", "Arriar", "Tensar", "Destensar", "Cargar", 
+    "Disparar", "Prender", "Extinguir", "Verter", "Drenar", 
+    "Reforzar", "Apuntalar", "Bloquear", "Desbloquear", "Engrasar", 
+    "Limpiar", "Bendecir", "Vigilar", "Convocar", "Evacuar" 
+};
+
+    private string[] systems = { 
+        "Rastrillo Norte", "Rastrillo Sur", "Puente Levadizo", "Portón de Hierro", "Puerta Trasera", 
+        "Catapulta Mayor", "Balista de Torre", "Trebuchet", "Mangonel", "Escorpión", 
+        "Caldero de Aceite", "Caldero de Brea", "Foso Exterior", "Foso Interior", "Trampa de Pinchos", 
+        "Muro Cortina", "Torre del Homenaje", "Barbacana", "Almena Oeste", "Almena Este", 
+        "Matacán Central", "Saetera", "Almenara", "Campana de Alerta", "Cuerno de Guerra", 
+        "Tambor de Batalla", "Armería Real", "Herrería", "Establos", "Pozo de Agua", 
+        "Despensa", "Túnel Secreto", "Cadena del Puerto", "Compuerta del Río", "Grúa de Carga", 
+        "Horno de Pan", "Mazmorras", "Sala del Trono", "Capilla", "Puesto de Guardia" 
+    };
 
     void Awake()
     {
