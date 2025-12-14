@@ -7,9 +7,9 @@ public class UIManagerEnviador : MonoBehaviour
     private ClientManager clientManager;
     private ServerManager serverManager;
 
-    private List<Slider> sliders = new();
-    private List<Toggle> toggles = new();
-    private List<Button> buttons = new();
+    private List<Slider> sliders = new List<Slider>();
+    private List<Toggle> toggles = new List<Toggle>();
+    private List<Button> buttons = new List<Button>();
 
     void Start()
     {
@@ -27,7 +27,7 @@ public class UIManagerEnviador : MonoBehaviour
             t.onValueChanged.AddListener((bool activo) =>
             {
                 EnviarEstadoUI();
-                Debug.Log($"Toggle {t.name} está ahora {(activo ? "ON" : "OFF")}");
+                Debug.Log($"Toggle {t.name} esta ahora {(activo ? "ON" : "OFF")}");
             });
 
         foreach (var b in buttons)
@@ -49,22 +49,19 @@ public class UIManagerEnviador : MonoBehaviour
 
         string json = JsonUtility.ToJson(state);
         EnviarMensaje(new NetMessage("UI_Update", json));
-
-        Debug.Log("Estado UI enviado.");
     }
 
     public void EnviarAccion(Button b)
     {
         EnviarMensaje(new NetMessage("Button_Clicked", b.name));
-        Debug.Log($"Enviando acción: {b.name}");
+        Debug.Log($"Enviando accion: {b.name}");
     }
-
 
     private void EnviarMensaje(NetMessage msg)
     {
         if (clientManager != null)
             clientManager.SendMessageToServer(msg);
-        else
+        else if (serverManager != null)
             serverManager.BroadcastMessage(msg);
     }
 }
