@@ -2,20 +2,23 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System;
 
 public class ServerGameController : MonoBehaviour
 {
     public static ServerGameController instance;
     private ServerManager serverManager;
 
-    public float totalTime = 120f;
-    public float taskDuration = 10f; 
+    public float totalTime = 300f;
+    public float taskDuration = 25.0f; 
     public int baseMistakesLimit = 5;
+    public float spawnRate = 2.0f;
 
     private float currentTime;
     private int currentMistakes;
     private int maxMistakes;
     private bool isRunning;
+    private float spawnTimer;
 
     private Dictionary<int, TaskData> activeTasks = new Dictionary<int, TaskData>();
     private Dictionary<string, int> playerScores = new Dictionary<string, int>();
@@ -25,17 +28,12 @@ public class ServerGameController : MonoBehaviour
     "Disparar", "Prender", "Extinguir", "Verter", "Drenar", 
     "Reforzar", "Apuntalar", "Bloquear", "Desbloquear", "Engrasar", 
     "Limpiar", "Bendecir", "Vigilar", "Convocar", "Evacuar" 
-};
+    };
 
     private string[] systems = { 
-        "Rastrillo Norte", "Rastrillo Sur", "Puente Levadizo", "Portón de Hierro", "Puerta Trasera", 
-        "Catapulta Mayor", "Balista de Torre", "Trebuchet", "Mangonel", "Escorpión", 
-        "Caldero de Aceite", "Caldero de Brea", "Foso Exterior", "Foso Interior", "Trampa de Pinchos", 
-        "Muro Cortina", "Torre del Homenaje", "Barbacana", "Almena Oeste", "Almena Este", 
-        "Matacán Central", "Saetera", "Almenara", "Campana de Alerta", "Cuerno de Guerra", 
-        "Tambor de Batalla", "Armería Real", "Herrería", "Establos", "Pozo de Agua", 
-        "Despensa", "Túnel Secreto", "Cadena del Puerto", "Compuerta del Río", "Grúa de Carga", 
-        "Horno de Pan", "Mazmorras", "Sala del Trono", "Capilla", "Puesto de Guardia" 
+        "Rastrillo Norte", "Rastrillo Sur", "Puente Levadizo", "Porton de Hierro", "Puerta Trasera", 
+        "Catapulta Mayor", "Balista de Torre", "Trebuchet", "Mangonel", "Escorpion", 
+        "Caldero de Aceite", "Caldero de Brea", "Foso Exterior", "Foso Interior", "Trampa de Pinchos"
     };
 
     void Awake()
@@ -46,75 +44,41 @@ public class ServerGameController : MonoBehaviour
     public void Initialize(ServerManager manager, List<string> players)
     {
         serverManager = manager;
-        playerScores.Clear();
-        foreach (var p in players) 
-        {
-            if(!playerScores.ContainsKey(p)) playerScores.Add(p, 0);
-        }
-
         currentTime = totalTime;
         currentMistakes = 0;
-        maxMistakes = Mathf.Max(baseMistakesLimit, players.Count * 2);
-        activeTasks.Clear();
-        
-        int initialTasks = Mathf.Clamp(players.Count * 4, 4, 16);
-        for (int i = 0; i < initialTasks; i++)
-        {
-            CreateTask();
-        }
-
+        maxMistakes = baseMistakesLimit;
         isRunning = true;
+        spawnTimer = 3.0f;
+        
+        activeTasks.Clear();
+        playerScores.Clear();
+        foreach(var p in players) playerScores.Add(p, 0);
+
+        StartCoroutine(GameLoop());
     }
 
-    void Update()
+    IEnumerator GameLoop()
     {
-        if (!isRunning) return;
-
-        currentTime -= Time.deltaTime;
-
-        List<int> expired = new List<int>();
-        foreach(var kvp in activeTasks)
+        while (isRunning && currentTime > 0 && currentMistakes < maxMistakes)
         {
-            if (Time.time > kvp.Value.timestamp + taskDuration)
+            currentTime -= Time.deltaTime;
+            spawnTimer -= Time.deltaTime;
+
+            if (spawnTimer <= 0)
             {
-                expired.Add(kvp.Key);
+                GenerateTask();
+                spawnTimer = spawnRate;
             }
-        }
 
-        foreach(var key in expired)
-        {
-            activeTasks.Remove(key);
-            currentMistakes++;
-            CreateTask();
-        }
-
-        if (currentMistakes >= maxMistakes)
-        {
-            EndGame(false);
-        }
-        else if (currentTime <= 0)
-        {
-            EndGame(true);
-        }
-        else
-        {
+            CheckExpiredTasks();
             BroadcastState();
+            yield return null;
         }
+
+        EndGame(currentTime > 0 && currentMistakes < maxMistakes);
     }
 
-    public void ProcessInput(string playerName, int slot)
-    {
-        if (!isRunning) return;
-
-        if (activeTasks.ContainsKey(slot))
-        {
-            activeTasks.Remove(slot);
-            if (playerScores.ContainsKey(playerName)) playerScores[playerName]++;
-            CreateTask();
-        }
-    }
-
-    void CreateTask()
+    void GenerateTask()
     {
         if (activeTasks.Count >= 16) return;
 
@@ -130,9 +94,85 @@ public class ServerGameController : MonoBehaviour
         {
             TaskData t = new TaskData();
             t.slotIndex = slot;
-            t.description = $"{actions[UnityEngine.Random.Range(0, actions.Length)]}\n{systems[UnityEngine.Random.Range(0, systems.Length)]}";
             t.timestamp = Time.time;
+            
+            int type = slot % 3;
+
+            if (type == 1)
+            {
+                int level = UnityEngine.Random.Range(1, 5);
+                t.targetValue = (float)level;
+                string sysName = systems[UnityEngine.Random.Range(0, systems.Length)];
+                t.description = $"Ajustar {sysName}\nal NIVEL {level}";
+            }
+            else if (type == 2)
+            {
+                bool targetState = UnityEngine.Random.value > 0.5f;
+                t.targetValue = targetState ? 1f : 0f;
+                string sysName = systems[UnityEngine.Random.Range(0, systems.Length)];
+                t.description = targetState ? $"ACTIVAR\n{sysName}" : $"DESACTIVAR\n{sysName}";
+            }
+            else
+            {
+                t.targetValue = 1f; 
+                t.description = $"{actions[UnityEngine.Random.Range(0, actions.Length)]}\n{systems[UnityEngine.Random.Range(0, systems.Length)]}";
+            }
+
             activeTasks.Add(slot, t);
+        }
+    }
+
+    void CheckExpiredTasks()
+    {
+        List<int> toRemove = new List<int>();
+        foreach(var kvp in activeTasks)
+        {
+            if (Time.time - kvp.Value.timestamp > taskDuration)
+            {
+                toRemove.Add(kvp.Key);
+                currentMistakes++;
+            }
+        }
+
+        foreach(var key in toRemove)
+        {
+            activeTasks.Remove(key);
+        }
+    }
+
+    public void ProcessInput(string playerName, int slotIndex, float inputValue)
+    {
+        if (!isRunning) return;
+
+        if (activeTasks.ContainsKey(slotIndex))
+        {
+            TaskData task = activeTasks[slotIndex];
+            bool success = false;
+            int type = slotIndex % 3;
+
+            if (type == 1)
+            {
+                if (Mathf.Abs(inputValue - task.targetValue) < 0.1f) success = true;
+            }
+            else if (type == 2)
+            {
+                if (Mathf.Abs(inputValue - task.targetValue) < 0.1f) success = true;
+            }
+            else
+            {
+                success = true;
+            }
+
+            if (success)
+            {
+                activeTasks.Remove(slotIndex);
+                if (playerScores.ContainsKey(playerName)) playerScores[playerName] += 100;
+            }
+        }
+        else
+        {
+            currentMistakes++;
+            if (playerScores.ContainsKey(playerName)) playerScores[playerName] -= 50;
         }
     }
 
@@ -159,6 +199,7 @@ public class ServerGameController : MonoBehaviour
         data.scores = "";
         foreach(var p in sorted) data.scores += $"{p.Key}: {p.Value}\n";
 
-        serverManager.BroadcastMessage(new NetMessage("GAME_OVER", JsonUtility.ToJson(data)));
+        string json = JsonUtility.ToJson(data);
+        serverManager.BroadcastMessage(new NetMessage("GAME_OVER", json));
     }
 }

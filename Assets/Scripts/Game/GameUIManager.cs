@@ -7,9 +7,15 @@ using UnityEngine.SceneManagement;
 public class GameUIManager : MonoBehaviour
 {
     public Transform gridParent;
-    public GameObject modulePrefab;
+    
+    [Header("Prefabs de Modulos")]
+    public GameObject buttonModulePrefab;
+    public GameObject sliderModulePrefab;
+    public GameObject toggleModulePrefab;
+
     public TMP_Text timerText;
     public TMP_Text mistakesText;
+    public TMP_Text instructionsLabel; 
     public GameObject gameOverPanel;
     public TMP_Text gameOverTitle;
     public TMP_Text gameOverStats;
@@ -27,13 +33,28 @@ public class GameUIManager : MonoBehaviour
             returnToLobbyButton.gameObject.SetActive(false);
         }
 
+        foreach(Transform child in gridParent)
+        {
+            Destroy(child.gameObject);
+        }
+
         for (int i = 0; i < SLOT_COUNT; i++)
         {
-            GameObject obj = Instantiate(modulePrefab, gridParent);
+            GameObject prefabToUse = buttonModulePrefab;
+            int type = i % 3;
+            
+            if (type == 1) prefabToUse = sliderModulePrefab;
+            else if (type == 2) prefabToUse = toggleModulePrefab;
+
+            GameObject obj = Instantiate(prefabToUse, gridParent);
             ModuleUI mod = obj.GetComponent<ModuleUI>();
-            mod.Setup(i, OnModuleClick);
-            mod.Refresh("", false);
-            modules.Add(mod);
+
+            if (mod != null)
+            {
+                mod.Setup(i, OnModuleClick);
+                mod.Refresh("", false);
+                modules.Add(mod);
+            }
         }
 
         if (ClientManager.instance != null)
@@ -52,28 +73,43 @@ public class GameUIManager : MonoBehaviour
         }
     }
 
-    void OnModuleClick(int slotIndex)
+    void OnModuleClick(int slotIndex, float value)
     {
-        ClientManager.instance.SendGameInput(slotIndex);
+        ClientManager.instance.SendGameInput(slotIndex, value);
     }
 
     void UpdateUI(GameStateData data)
     {
-        timerText.text = $"{Mathf.Ceil(data.timeRemaining)}s";
-        mistakesText.text = $"{data.currentMistakes}/{data.maxMistakes}";
+        if(timerText != null) timerText.text = $"{Mathf.Ceil(data.timeRemaining)}s";
+        if(mistakesText != null) mistakesText.text = $"{data.currentMistakes}/{data.maxMistakes}";
+
+        string instructions = "";
 
         for (int i = 0; i < modules.Count; i++)
         {
             modules[i].Refresh("", false);
         }
 
-        foreach (var task in data.tasks)
+        if (data.tasks.Count > 0)
         {
-            if (task.slotIndex >= 0 && task.slotIndex < modules.Count)
+            instructions = "| ";
+            foreach (var task in data.tasks)
             {
-                modules[task.slotIndex].Refresh(task.description, true);
+                if (task.slotIndex >= 0 && task.slotIndex < modules.Count)
+                {
+                    modules[task.slotIndex].Refresh(task.description, true);
+                    
+                    string flatDescription = task.description.Replace("\n", " ");
+                    instructions += $"{flatDescription} (Mod {task.slotIndex}) | ";
+                }
             }
         }
+        else
+        {
+            instructions = "ESPERANDO ORDENES...";
+        }
+
+        if(instructionsLabel != null) instructionsLabel.text = instructions;
     }
 
     void ShowGameOver(GameOverData data)
@@ -87,6 +123,6 @@ public class GameUIManager : MonoBehaviour
 
     void OnReturnClicked()
     {
-         SceneManager.LoadScene("Lobby");
+        SceneManager.LoadScene("Lobby");
     }
 }

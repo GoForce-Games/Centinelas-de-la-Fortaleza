@@ -1,12 +1,9 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using UnityEngine; 
-using System.Net;
+using UnityEngine;
 using System.Net.Sockets;
 using System.Threading;
-using System.Threading.Tasks;
-using Game;
+using System.Net;
 using UnityEngine.SceneManagement;
 
 public class ClientManager : MonoBehaviour
@@ -15,31 +12,22 @@ public class ClientManager : MonoBehaviour
 
     public event Action<string> OnChatMessageReceived;
     public event Action<List<string>> OnPlayerListUpdated;
-    public event Action<string> OnGameStarted; 
     public event Action<GameStateData> OnGameSyncReceived;
     public event Action<GameOverData> OnGameOverReceived;
 
     private Thread receiveThread;
-    public LobbyUI lobbyUI;
     private bool isRunning = false;
 
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
-    private CancellationTokenSource cancelToken = new CancellationTokenSource();
-
+    
     private float lastSent = 0;
-    private float lastReceived = 0;
     [SerializeField] private float pingInterval = 0.5f;
-    [SerializeField] private float pingTimeout = 3.0f;
-
-    private UIManagerReceptor uiReceptor;
 
     public string playerName;
     private readonly Queue<Action> actionQueue = new Queue<Action>();
-    private readonly Queue<string> messageQueue = new Queue<string>();
 
     private NetMessage pingMsg = new NetMessage("PING", "client");
-    private NetMessage pongMsg = new NetMessage("PONG", "client");
 
     void Awake()
     {
@@ -54,86 +42,8 @@ public class ClientManager : MonoBehaviour
         }
     }
 
-    public void ConnectToServer(string ipAddress)
-    {
-        uiReceptor = FindObjectOfType<UIManagerReceptor>();
-        
-        isRunning = true;
-        playerName = PlayerPrefs.GetString(NetworkGlobals.PLAYER_NAME_KEY, "Jugador" + UnityEngine.Random.Range(0,999));
-        pingMsg.msgData = pongMsg.msgData = playerName;
-        
-        try
-        {
-            Debug.Log($"Iniciando conexión en modo UDP hacia {ipAddress}...");
-            receiveThread = new Thread(() => {
-                ConnectAndReceiveUDP(ipAddress);
-            });
-            receiveThread.IsBackground = true;
-            receiveThread.Start();
-
-            StartCoroutine(PingTimer());
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError("Error al iniciar conexión: " + e.Message);
-        }
-
-        instance = this;
-    }
-
-    public void RegisterGameUI(UIManagerReceptor receptor)
-    {
-        uiReceptor = receptor;
-    }
-
-    IEnumerator PingTimer()
-    {
-        while (!cancelToken.IsCancellationRequested)
-        {
-            if ((lastSent + pingInterval) < Time.time && !string.IsNullOrEmpty(playerName))
-                SendMessageToServer(pingMsg);
-            yield return new WaitForSecondsRealtime(pingInterval);
-        }
-    }
-
-    private async void ConnectAndReceiveUDP(string ip)
-    {
-        try
-        {
-            udpClient = new UdpClient();
-            serverEndPoint = new IPEndPoint(IPAddress.Parse(ip), NetworkGlobals.GAME_PORT_UDP);
-            EnqueueToMainThread(() => Debug.Log("Cliente UDP listo."));
-
-            NetMessage joinMsg = new NetMessage("JOIN", playerName);
-            SendMessageToServer(joinMsg);
-
-            while (isRunning)
-            {
-                var resultTask = udpClient.ReceiveAsync();
-                if (await Task.WhenAny(resultTask, Task.Delay((int)(pingTimeout * 1000))) == resultTask)
-                {
-                    string jsonMessage = NetworkGlobals.ENCODING.GetString(resultTask.Result.Buffer);
-                    EnqueueToMainThread(jsonMessage); 
-                    EnqueueToMainThread(() => lastReceived = Time.time);
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            if (isRunning) EnqueueToMainThread(() => Debug.LogError("Error UDP: " + e.Message));
-        }
-    }
-
     void Update()
     {
-        lock (messageQueue)
-        {
-            while (messageQueue.Count > 0)
-            {
-                ProcessServerMessage(messageQueue.Dequeue());
-            }
-        }
-
         lock (actionQueue)
         {
             while (actionQueue.Count > 0)
@@ -141,62 +51,80 @@ public class ClientManager : MonoBehaviour
                 actionQueue.Dequeue()?.Invoke();
             }
         }
+
+        if (isRunning && udpClient != null)
+        {
+            if (Time.time - lastSent > pingInterval)
+            {
+                SendMessageToServer(pingMsg);
+            }
+        }
     }
 
-    private void ProcessServerMessage(string jsonMsg)
+    public void ConnectToServer(string ip)
     {
         try
         {
-            NetMessage msg = JsonUtility.FromJson<NetMessage>(jsonMsg);
-            if (msg == null) return;
+            udpClient = new UdpClient();
+            serverEndPoint = new IPEndPoint(IPAddress.Parse(ip), 8888);
+            udpClient.Connect(serverEndPoint);
 
-            switch (msg.msgType)
+            isRunning = true;
+            receiveThread = new Thread(ReceiveLoop);
+            receiveThread.IsBackground = true;
+            receiveThread.Start();
+
+            NetMessage msg = new NetMessage("CONNECT", playerName);
+            SendMessageToServer(msg);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e.Message);
+        }
+    }
+
+    private void ReceiveLoop()
+    {
+        while (isRunning)
+        {
+            try
             {
-                case "CHAT":
-                    OnChatMessageReceived?.Invoke(msg.msgData);
-                    break;
+                IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+                byte[] data = udpClient.Receive(ref remoteEP);
+                string json = System.Text.Encoding.UTF8.GetString(data);
+                NetMessage msg = JsonUtility.FromJson<NetMessage>(json);
 
-                case "PLAYERLIST":
-                    string[] playerNames = msg.msgData.Split(',');
-                    OnPlayerListUpdated?.Invoke(new List<string>(playerNames));
-                    break;
+                EnqueueToMainThread(() => ProcessMessage(msg));
+            }
+            catch (Exception)
+            {
                 
-                case "START_GAME":
-                    OnGameStarted?.Invoke("GameScene");
-                    SceneManager.LoadScene("GameScene");
-                    break;
-
-                case "UI_Update":
-                case "Accion1_Clicked":
-                    if (uiReceptor == null) uiReceptor = FindObjectOfType<UIManagerReceptor>();
-                    if (uiReceptor != null) uiReceptor.RecibirMensaje(jsonMsg);
-                    break;
-
-                case "PING":
-                    SendMessageToServer(new NetMessage("PONG", msg.msgData));
-                    break;
-
-                case "PONG":
-                    break;
-                
-                case NetworkGlobals.MODULE_MANAGER_EVENT_KEY:
-                    ModuleManager.ClientProcessReceive(msg);
-                    break;
-
-                case "GAME_SYNC":
-                    GameStateData gData = JsonUtility.FromJson<GameStateData>(msg.msgData);
-                    OnGameSyncReceived?.Invoke(gData);
-                    break;
-
-                case "GAME_OVER":
-                    GameOverData overData = JsonUtility.FromJson<GameOverData>(msg.msgData);
-                    OnGameOverReceived?.Invoke(overData);
-                    break;
             }
         }
-        catch (System.Exception e)
+    }
+
+    private void ProcessMessage(NetMessage msg)
+    {
+        switch (msg.opCode)
         {
-            Debug.LogWarning("Error deserializar: " + e.Message);
+            case "CHAT":
+                OnChatMessageReceived?.Invoke(msg.msgData);
+                break;
+            case "PLAYERLIST":
+                string[] players = msg.msgData.Split(',');
+                OnPlayerListUpdated?.Invoke(new List<string>(players));
+                break;
+            case "GAME_SYNC":
+                GameStateData state = JsonUtility.FromJson<GameStateData>(msg.msgData);
+                OnGameSyncReceived?.Invoke(state);
+                break;
+            case "GAME_OVER":
+                GameOverData over = JsonUtility.FromJson<GameOverData>(msg.msgData);
+                OnGameOverReceived?.Invoke(over);
+                break;
+            case "START_GAME":
+                SceneManager.LoadScene("GameScene");
+                break;
         }
     }
 
@@ -209,53 +137,39 @@ public class ClientManager : MonoBehaviour
         }
     }
 
-    public void SendMessageToServer(NetMessage msg)
-    {
-        string jsonMessage = JsonUtility.ToJson(msg); 
-
-        if (udpClient == null) return;
-        
-        try
-        {
-            lock (udpClient)
-            {
-                byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
-                udpClient?.Send(data, data.Length, serverEndPoint);
-                EnqueueToMainThread(() => lastSent = Time.time); 
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError("Error al enviar mensaje: " + e.Message);
-        }
-    }
-
-    public void SendGameInput(int slotIndex)
+    public void SendGameInput(int slotIndex, float value)
     {
         PlayerInputData input = new PlayerInputData();
         input.slotIndex = slotIndex;
         input.playerName = playerName;
+        input.inputValue = value;
+        
         NetMessage msg = new NetMessage("GAME_INPUT", JsonUtility.ToJson(input));
         SendMessageToServer(msg);
     }
 
-    private void EnqueueToMainThread(System.Action action)
+    public void SendMessageToServer(NetMessage msg)
+    {
+        if (udpClient == null) return;
+        try
+        {
+            string json = JsonUtility.ToJson(msg);
+            byte[] data = System.Text.Encoding.UTF8.GetBytes(json);
+            udpClient.Send(data, data.Length);
+            lastSent = Time.time;
+        }
+        catch (Exception) { }
+    }
+
+    private void EnqueueToMainThread(Action action)
     {
         lock (actionQueue)
         {
-             if(action != null) actionQueue.Enqueue(action);
-        }
-    }
-    
-    private void EnqueueToMainThread(string message)
-    {
-        lock (messageQueue)
-        {
-            messageQueue.Enqueue(message);
+            actionQueue.Enqueue(action);
         }
     }
 
-   void OnApplicationQuit()
+    void OnApplicationQuit()
     {
         isRunning = false;
         receiveThread?.Abort();

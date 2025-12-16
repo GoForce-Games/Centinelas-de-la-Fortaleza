@@ -7,14 +7,17 @@ public class NetMessage
 {
     public string msgType;
     public string msgData;
+    public string opCode;
     // Aquí podemos añadir más campos fácilmente, ej:
     // public string senderName;
     // public int value;
     
-    public NetMessage(string type, string data)
+    public NetMessage(string op, string data)
     {
-        this.msgType = type;
+        this.opCode = op;
         this.msgData = data;
+        
+        this.msgType = op;
     }
 
     public byte[] ToBytes()

@@ -2,9 +2,8 @@ using UnityEngine;
 using System.Net;
 using System.Net.Sockets;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
-using Game;
+using System;
 
 public class ServerManager : MonoBehaviour
 {
@@ -15,6 +14,8 @@ public class ServerManager : MonoBehaviour
     private List<string> playerNames = new List<string>();
     private bool isRunning;
     private Thread listenThread;
+    
+    private readonly Queue<Action> actionQueue = new Queue<Action>();
 
     void Awake()
     {
@@ -34,11 +35,22 @@ public class ServerManager : MonoBehaviour
         StartServer();
     }
 
+    void Update()
+    {
+        lock (actionQueue)
+        {
+            while (actionQueue.Count > 0)
+            {
+                actionQueue.Dequeue()?.Invoke();
+            }
+        }
+    }
+
     void StartServer()
     {
         if (udpServer != null) return;
 
-        udpServer = new UdpClient(NetworkGlobals.GAME_PORT_UDP);
+        udpServer = new UdpClient(8888);
         isRunning = true;
         listenThread = new Thread(ListenLoop);
         listenThread.IsBackground = true;
@@ -56,48 +68,46 @@ public class ServerManager : MonoBehaviour
             {
                 IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
                 byte[] data = udpServer.Receive(ref remoteEP);
-                string msgJson = NetworkGlobals.ENCODING.GetString(data);
-                NetMessage msg = JsonUtility.FromJson<NetMessage>(msgJson);
+                string json = System.Text.Encoding.UTF8.GetString(data);
+                NetMessage msg = JsonUtility.FromJson<NetMessage>(json);
 
-                HandleMessage(msg, remoteEP);
+                EnqueueToMainThread(() => ProcessMessage(msg, remoteEP));
             }
-            catch { }
+            catch (Exception) { }
         }
     }
 
-    void HandleMessage(NetMessage msg, IPEndPoint sender)
+    void ProcessMessage(NetMessage msg, IPEndPoint sender)
     {
-        MainThreadDispatcher.Enqueue(() => {
-            switch (msg.msgType)
+        bool newClient = true;
+        foreach(var c in clients)
+        {
+            if(c.ToString() == sender.ToString()) 
             {
-                case "JOIN":
-                    bool exists = false;
-                    foreach(var c in clients) if(c.Equals(sender)) exists = true;
-                    
-                    if (!exists)
-                    {
-                        clients.Add(sender);
-                        playerNames.Add(msg.msgData);
-                        SendPlayerList();
-                    }
-                    break;
-                case "CHAT":
-                    BroadcastMessage(msg);
-                    break;
-                case "GAME_INPUT":
-                    PlayerInputData input = JsonUtility.FromJson<PlayerInputData>(msg.msgData);
-                    if(ServerGameController.instance != null)
-                        ServerGameController.instance.ProcessInput(input.playerName, input.slotIndex);
-                    break;
-                case "PING":
-                    break;
-                case "UI_Update":
-                case "Button_Clicked":
-                case NetworkGlobals.MODULE_MANAGER_EVENT_KEY:
-                    ModuleManager.ServerProcessReceive(msg);
-                    break;
+                newClient = false;
+                break;
             }
-        });
+        }
+        if(newClient) clients.Add(sender);
+
+        switch (msg.opCode)
+        {
+            case "CONNECT":
+                if (!playerNames.Contains(msg.msgData))
+                    playerNames.Add(msg.msgData);
+                SendPlayerList();
+                break;
+            case "CHAT":
+                BroadcastMessage(msg);
+                break;
+            case "GAME_INPUT":
+                PlayerInputData input = JsonUtility.FromJson<PlayerInputData>(msg.msgData);
+                if(ServerGameController.instance != null)
+                    ServerGameController.instance.ProcessInput(input.playerName, input.slotIndex, input.inputValue);
+                break;
+            case "PING":
+                break;
+        }
     }
 
     void SendPlayerList()
@@ -116,11 +126,18 @@ public class ServerManager : MonoBehaviour
     public void BroadcastMessage(NetMessage msg)
     {
         string json = JsonUtility.ToJson(msg);
-        byte[] data = NetworkGlobals.ENCODING.GetBytes(json);
+        byte[] data = System.Text.Encoding.UTF8.GetBytes(json);
         foreach (var client in clients)
         {
-            if(udpServer != null)
-                udpServer.Send(data, data.Length, client);
+            udpServer.Send(data, data.Length, client);
+        }
+    }
+
+    private void EnqueueToMainThread(Action action)
+    {
+        lock (actionQueue)
+        {
+            actionQueue.Enqueue(action);
         }
     }
 

@@ -1,13 +1,13 @@
+using UnityEngine;
 using System;
 using System.Collections.Generic;
 
 [Serializable]
-public class GameStateData
+public class PlayerInputData
 {
-    public float timeRemaining;
-    public int currentMistakes;
-    public int maxMistakes;
-    public List<TaskData> tasks;
+    public string playerName;
+    public int slotIndex;
+    public float inputValue;
 }
 
 [Serializable]
@@ -16,13 +16,16 @@ public class TaskData
     public int slotIndex;
     public string description;
     public float timestamp;
+    public float targetValue;
 }
 
 [Serializable]
-public class PlayerInputData
+public class GameStateData
 {
-    public int slotIndex;
-    public string playerName;
+    public float timeRemaining;
+    public int currentMistakes;
+    public int maxMistakes;
+    public List<TaskData> tasks;
 }
 
 [Serializable]
