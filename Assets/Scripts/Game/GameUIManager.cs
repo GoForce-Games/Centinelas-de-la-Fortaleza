@@ -27,6 +27,8 @@ public class GameUIManager : MonoBehaviour
     void Start()
     {
         gameOverPanel.SetActive(false);
+        gridParent.gameObject.SetActive(true);
+
         if(returnToLobbyButton != null)
         {
             returnToLobbyButton.onClick.AddListener(OnReturnClicked);
@@ -114,7 +116,9 @@ public class GameUIManager : MonoBehaviour
 
     void ShowGameOver(GameOverData data)
     {
+        gridParent.gameObject.SetActive(false);
         gameOverPanel.SetActive(true);
+        
         gameOverTitle.text = data.isWin ? "MISION CUMPLIDA" : "NAVE DESTRUIDA";
         gameOverStats.text = $"MVP: {data.mvpName}\n\n{data.scores}";
         

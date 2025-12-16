@@ -15,18 +15,18 @@ public class ClientManager : MonoBehaviour
     public event Action<GameStateData> OnGameSyncReceived;
     public event Action<GameOverData> OnGameOverReceived;
 
+    public List<string> currentPlayers = new List<string>();
+    public bool IsConnected { get; private set; } = false;
+
     private Thread receiveThread;
     private bool isRunning = false;
-
     private UdpClient udpClient;
     private IPEndPoint serverEndPoint;
-    
     private float lastSent = 0;
     [SerializeField] private float pingInterval = 0.5f;
 
     public string playerName;
     private readonly Queue<Action> actionQueue = new Queue<Action>();
-
     private NetMessage pingMsg = new NetMessage("PING", "client");
 
     void Awake()
@@ -65,11 +65,14 @@ public class ClientManager : MonoBehaviour
     {
         try
         {
+            if (udpClient != null) udpClient.Close();
+            
             udpClient = new UdpClient();
             serverEndPoint = new IPEndPoint(IPAddress.Parse(ip), 8888);
             udpClient.Connect(serverEndPoint);
 
             isRunning = true;
+            IsConnected = true;
             receiveThread = new Thread(ReceiveLoop);
             receiveThread.IsBackground = true;
             receiveThread.Start();
@@ -94,13 +97,21 @@ public class ClientManager : MonoBehaviour
                 string json = System.Text.Encoding.UTF8.GetString(data);
                 NetMessage msg = JsonUtility.FromJson<NetMessage>(json);
 
+                if (msg.opCode != "ACK" && msg.opCode != "PONG")
+                {
+                    SendAck(msg.messageId);
+                }
+
                 EnqueueToMainThread(() => ProcessMessage(msg));
             }
-            catch (Exception)
-            {
-                
-            }
+            catch (Exception) {}
         }
+    }
+
+    private void SendAck(string idReceived)
+    {
+        NetMessage ack = new NetMessage("ACK", idReceived);
+        SendMessageToServer(ack);
     }
 
     private void ProcessMessage(NetMessage msg)
@@ -112,7 +123,8 @@ public class ClientManager : MonoBehaviour
                 break;
             case "PLAYERLIST":
                 string[] players = msg.msgData.Split(',');
-                OnPlayerListUpdated?.Invoke(new List<string>(players));
+                currentPlayers = new List<string>(players);
+                OnPlayerListUpdated?.Invoke(currentPlayers);
                 break;
             case "GAME_SYNC":
                 GameStateData state = JsonUtility.FromJson<GameStateData>(msg.msgData);
@@ -124,6 +136,8 @@ public class ClientManager : MonoBehaviour
                 break;
             case "START_GAME":
                 SceneManager.LoadScene("GameScene");
+                break;
+            case "ACK":
                 break;
         }
     }
@@ -143,7 +157,6 @@ public class ClientManager : MonoBehaviour
         input.slotIndex = slotIndex;
         input.playerName = playerName;
         input.inputValue = value;
-        
         NetMessage msg = new NetMessage("GAME_INPUT", JsonUtility.ToJson(input));
         SendMessageToServer(msg);
     }

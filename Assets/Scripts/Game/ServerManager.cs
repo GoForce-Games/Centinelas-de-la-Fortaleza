@@ -55,9 +55,6 @@ public class ServerManager : MonoBehaviour
         listenThread = new Thread(ListenLoop);
         listenThread.IsBackground = true;
         listenThread.Start();
-        
-        if (GetComponent<ServerGameController>() == null)
-            gameObject.AddComponent<ServerGameController>();
     }
 
     void ListenLoop()
@@ -71,10 +68,23 @@ public class ServerManager : MonoBehaviour
                 string json = System.Text.Encoding.UTF8.GetString(data);
                 NetMessage msg = JsonUtility.FromJson<NetMessage>(json);
 
+                if (msg.opCode != "ACK" && msg.opCode != "PONG")
+                {
+                    SendAck(msg.messageId, remoteEP);
+                }
+
                 EnqueueToMainThread(() => ProcessMessage(msg, remoteEP));
             }
             catch (Exception) { }
         }
+    }
+
+    void SendAck(string idReceived, IPEndPoint target)
+    {
+        NetMessage ack = new NetMessage("ACK", idReceived);
+        string json = JsonUtility.ToJson(ack);
+        byte[] data = System.Text.Encoding.UTF8.GetBytes(json);
+        udpServer.Send(data, data.Length, target);
     }
 
     void ProcessMessage(NetMessage msg, IPEndPoint sender)
@@ -107,6 +117,8 @@ public class ServerManager : MonoBehaviour
                 break;
             case "PING":
                 break;
+            case "ACK":
+                break;
         }
     }
 
@@ -118,9 +130,16 @@ public class ServerManager : MonoBehaviour
 
     public void StartGame()
     {
+        ServerGameController oldController = GetComponent<ServerGameController>();
+        if (oldController != null)
+        {
+            Destroy(oldController);
+        }
+
+        ServerGameController newController = gameObject.AddComponent<ServerGameController>();
+        newController.Initialize(this, playerNames);
+
         BroadcastMessage(new NetMessage("START_GAME", ""));
-        if(ServerGameController.instance != null)
-            ServerGameController.instance.Initialize(this, playerNames);
     }
 
     public void BroadcastMessage(NetMessage msg)

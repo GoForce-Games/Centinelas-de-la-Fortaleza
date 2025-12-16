@@ -17,7 +17,6 @@ public class ModuleUI : MonoBehaviour
     private Action<int, float> onClickAction;
     private bool isActive;
     private float fadeSpeed = 0.1f;
-    private Coroutine debounceCoroutine;
 
     public void Setup(int slotIndex, Action<int, float> callback)
     {
@@ -36,7 +35,7 @@ public class ModuleUI : MonoBehaviour
             slider.minValue = 0;
             slider.maxValue = 4;
             slider.onValueChanged.RemoveAllListeners();
-            slider.onValueChanged.AddListener(OnSliderChanged);
+            slider.onValueChanged.AddListener(OnInteract);
         }
         
         if(toggle != null) 
@@ -53,18 +52,6 @@ public class ModuleUI : MonoBehaviour
             canvasGroup.alpha -= Time.deltaTime * fadeSpeed;
             if (canvasGroup.alpha < 0.2f) canvasGroup.alpha = 0.2f;
         }
-    }
-
-    private void OnSliderChanged(float val)
-    {
-        if (debounceCoroutine != null) StopCoroutine(debounceCoroutine);
-        debounceCoroutine = StartCoroutine(SendSliderValue(val));
-    }
-
-    private IEnumerator SendSliderValue(float val)
-    {
-        yield return new WaitForSeconds(0.25f);
-        OnInteract(val);
     }
 
     private void OnInteract(float value)
