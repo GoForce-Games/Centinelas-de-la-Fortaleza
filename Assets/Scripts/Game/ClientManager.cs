@@ -32,15 +32,15 @@ public class ClientManager : MonoBehaviour
     private IPEndPoint serverEndPoint;
     private CancellationTokenSource cancelToken = new CancellationTokenSource();
 
-    private object timeLock;
-    private float _currentTime = Time.time;
+    private object timeLock = new object();
+    private float _currentTime = 0;
     private float lastSent = 0;
     private float lastReceived = 0;
     [SerializeField] private float pingInterval = 0.5f;
     [SerializeField] private float pingTimeout = 3.0f;
     [SerializeField] private float ackTimeout = 1.0f;
     [SerializeField] private short consecutiveTimeouts = 0;
-    [SerializeField] private short maxRetries = 0;
+    [SerializeField] [Min(2)] private short maxRetries = 3;
 
     // Self-locking -> thread-safe
     private float CurrentTime
@@ -188,9 +188,10 @@ public class ClientManager : MonoBehaviour
             }
         }
         
+        lock(ackedIds)
         if (ackedIds.Count > 0)
         {
-            SendMessageToServer(new NetMessage("ACK", JsonUtility.ToJson(ackedIds.ToArray())));
+            SendMessageToServer(new NetMessage("ACK", JsonHelper.ToJson(ackedIds.ToArray())));
             ackedIds.Clear();
         }
 
@@ -207,6 +208,7 @@ public class ClientManager : MonoBehaviour
             if (msg == null) return;
 
             msgId = msg.ID;
+            msgType = msg.msgType;
             
             switch (msg.msgType)
             {
@@ -249,7 +251,7 @@ public class ClientManager : MonoBehaviour
                     break;
                 
                 case "ACK":
-                    int[] acknowledgedPackets = JsonUtility.FromJson<int[]>(msg.msgData);
+                    int[] acknowledgedPackets = JsonHelper.FromJson<int>(msg.msgData);
                     acksPending.RemoveAll(p => acknowledgedPackets.Contains(p.msg.ID));
                     break;
                 
@@ -267,8 +269,9 @@ public class ClientManager : MonoBehaviour
             Debug.LogWarning("Error deserializar: " + e.Message);
         }
         
+        // Prevent ACK loop. PONG is ACK without data and acts as PING's acknowledgement packet
         if (msgId > -1 && msgType != "ACK" && msgType != "PING" && msgType != "PONG")
-            ackedIds.Add(msgId);
+            lock(ackedIds) ackedIds.Add(msgId);
     }
 
     public void SendChatMessage(string message)
@@ -300,11 +303,11 @@ public class ClientManager : MonoBehaviour
                 {
                     foreach (var pendingMessage in acksPending)
                     {
-                        if (pendingMessage.retryCount++ >= maxRetries)
+                        if (pendingMessage.retryCount >= maxRetries)
                         {
-                            // Max retries reached, show error in console
-                            Debug.LogWarning($"<color=red>CLIENT [ERROR]:</color> Packet lost with ID {pendingMessage.msg.ID} and type {pendingMessage.msg.msgType} with contents: {pendingMessage.msg.msgData}");
-                            // TODO remove message from list
+                            // Max retries reached, show error in console except for ACK, which will fail silently
+                            if (pendingMessage.msg.msgType != "ACK")
+                                Debug.LogWarning($"<color=red>CLIENT [ERROR]:</color> Packet lost with ID {pendingMessage.msg.ID} and type {pendingMessage.msg.msgType} with contents: {pendingMessage.msg.msgData}");
                         }
                         else if (pendingMessage.timeStamp + ackTimeout <= CurrentTime)
                         {
@@ -312,6 +315,7 @@ public class ClientManager : MonoBehaviour
                             byte[] pendingData = pendingMessage.msg.ToBytes();
                             udpClient.Send(pendingData, pendingData.Length, serverEndPoint);
                             pendingMessage.timeStamp = CurrentTime;
+                            pendingMessage.retryCount++;
                         }
                     }
                     acksPending.RemoveAll(p => p.retryCount > maxRetries );

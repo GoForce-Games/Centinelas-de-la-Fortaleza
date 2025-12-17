@@ -23,12 +23,12 @@ public class ServerManager : MonoBehaviour
 
     private List<ClientConnection> clients = new List<ClientConnection>();
 
-    private object timeLock;
-    private float _currentTime = Time.time;
+    private object timeLock = new object();
+    private float _currentTime = 0;
     [SerializeField] private float pingInterval = 0.5f;
     [SerializeField] private float pingTimeout = 3.0f;
     [SerializeField] private float ackTimeout = 1.0f;
-    [SerializeField] private short maxRetries = 3; // Applies to both timeouts and missed packages
+    [SerializeField] [Min(2)] private short maxRetries = 3; // Applies to both timeouts and missed packages
     
     private byte[] pingMsg = NetworkGlobals.ENCODING.GetBytes("{\"msgType\":\"PING\",\"msgData\":\"host\"}");
     private byte[] pongMsg = NetworkGlobals.ENCODING.GetBytes("{\"msgType\":\"PONG\",\"msgData\":\"host\"}");
@@ -86,7 +86,8 @@ public class ServerManager : MonoBehaviour
             {
                 if (clientConnection.ackedIds.Count > 0)
                 {
-                    SendToClient(new NetMessage("ACK", JsonUtility.ToJson(clientConnection.ackedIds.ToArray())), clientConnection);
+                    SendToClient(new NetMessage("ACK", JsonHelper.ToJson(clientConnection.ackedIds.ToArray())), clientConnection);
+                    clientConnection.ackedIds.Clear();
                 }
             }
 
@@ -165,7 +166,7 @@ public class ServerManager : MonoBehaviour
                 break;
             
             case "ACK":
-                int[] acknowledgedPackets = JsonUtility.FromJson<int[]>(msg.msgData);
+                int[] acknowledgedPackets = JsonHelper.FromJson<int>(msg.msgData);
                 sender.ackPending.RemoveAll(p => acknowledgedPackets.Contains(p.msg.ID));
                 break;
 
@@ -249,10 +250,11 @@ public class ServerManager : MonoBehaviour
         {
             foreach (var pendingMessage in cc.ackPending)
             {
-                if (pendingMessage.retryCount++ >= maxRetries)
+                if (pendingMessage.retryCount >= maxRetries)
                 {
                     // Max retries reached, show error in console
-                    Debug.LogWarning($"<color=red>SERVER [ERROR]:</color> Packet lost with ID {pendingMessage.msg.ID}, target client {cc.endPoint} and type {pendingMessage.msg.msgType} with contents: {pendingMessage.msg.msgData}");
+                    if (pendingMessage.msg.msgType != "ACK")
+                        Debug.LogWarning($"<color=red>SERVER [ERROR]:</color> Packet lost with ID {pendingMessage.msg.ID}, target client {cc.endPoint} and type {pendingMessage.msg.msgType} with contents: {pendingMessage.msg.msgData}");
                 }
                 else if (pendingMessage.timeStamp + ackTimeout <= CurrentTime)
                 {
@@ -260,6 +262,7 @@ public class ServerManager : MonoBehaviour
                     byte[] data = pendingMessage.msg.ToBytes();
                     udpListener.Send(data, data.Length, cc.endPoint);
                     pendingMessage.timeStamp = CurrentTime;
+                    pendingMessage.retryCount++;
                 }
             }
             cc.ackPending.RemoveAll(p => p.retryCount > maxRetries );
