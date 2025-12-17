@@ -31,6 +31,8 @@ public class ClientManager : MonoBehaviour
     private IPEndPoint serverEndPoint;
     private CancellationTokenSource cancelToken = new CancellationTokenSource();
 
+    private object timeLock;
+    private float _currentTime = Time.time;
     private float lastSent = 0;
     private float lastReceived = 0;
     [SerializeField] private float pingInterval = 0.5f;
@@ -38,6 +40,14 @@ public class ClientManager : MonoBehaviour
     [SerializeField] private short consecutiveTimeouts = 0;
     [SerializeField] private short maxTimeouts = 0;
 
+
+    // Self-locking -> thread-safe
+    private float CurrentTime
+    {
+        get { lock(timeLock) return _currentTime; }
+        set { lock(timeLock) _currentTime = value; }
+    }
+    
     private UIManagerReceptor uiReceptor;
 
     public string playerName;
@@ -108,11 +118,11 @@ public class ClientManager : MonoBehaviour
         SendMessageToServer(msg);
     }
 
-    IEnumerator PingTimer()
+    private IEnumerator PingTimer()
     {
         while (!cancelToken.IsCancellationRequested)
         {
-            if ((lastSent + pingInterval) < Time.time && !string.IsNullOrEmpty(playerName))
+            if ((lastSent + pingInterval) < CurrentTime && !string.IsNullOrEmpty(playerName))
                 SendMessageToServer(pingMsg);
             yield return new WaitForSecondsRealtime(pingInterval);
         }
@@ -136,13 +146,13 @@ public class ClientManager : MonoBehaviour
                 {
                     string jsonMessage = NetworkGlobals.ENCODING.GetString(resultTask.Result.Buffer);
                     EnqueueToMainThread(jsonMessage); 
-                    EnqueueToMainThread(() => lastReceived = Time.time);
+                    lastReceived = CurrentTime;
                     consecutiveTimeouts = 0;
                 }
                 else
                 {
-                    EnqueueToMainThread(() => Debug.LogError($"Error en cliente UDP: Timeout (Try {++consecutiveTimeouts}/{maxTimeouts}"));
-                    if (consecutiveTimeouts >= maxTimeouts)
+                    EnqueueToMainThread(() => Debug.LogError($"Error en cliente UDP: Timeout (Try {++consecutiveTimeouts}/{maxRetries}"));
+                    if (consecutiveTimeouts >= maxRetries)
                     {
                         isRunning = false;
                         cancelToken.Cancel();
@@ -173,6 +183,7 @@ public class ClientManager : MonoBehaviour
                 actionQueue.Dequeue()?.Invoke();
             }
         }
+        CurrentTime = Time.time;
     }
 
     private void ProcessServerMessage(string jsonMsg)
@@ -260,7 +271,7 @@ public class ClientManager : MonoBehaviour
             {
                 byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
                 udpClient?.Send(data, data.Length, serverEndPoint);
-                EnqueueToMainThread(() => lastSent = Time.time); 
+                lastSent = CurrentTime; 
             }
         }
         catch (System.Exception e)
