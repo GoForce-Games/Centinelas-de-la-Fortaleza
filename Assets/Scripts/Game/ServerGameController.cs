@@ -9,6 +9,7 @@ public class ServerGameController : MonoBehaviour
     public static ServerGameController instance;
     private ServerManager serverManager;
 
+    [Header("Configuración del Juego")]
     public float totalTime = 300f;
     public float taskDuration = 25.0f; 
     public int baseMistakesLimit = 5;
@@ -41,6 +42,20 @@ public class ServerGameController : MonoBehaviour
         instance = this;
     }
 
+    void Start()
+    {
+        if (ServerManager.instance != null)
+        {
+            Debug.Log("ServerGameController: Iniciando lógica de juego (HOST)...");
+            Initialize(ServerManager.instance, ServerManager.instance.GetConnectedPlayers());
+        }
+        else
+        {
+            Debug.Log("ServerGameController: Detectado modo CLIENTE. Destruyendo controlador lógico.");
+            Destroy(this.gameObject);
+        }
+    }
+
     public void Initialize(ServerManager manager, List<string> players)
     {
         serverManager = manager;
@@ -48,17 +63,26 @@ public class ServerGameController : MonoBehaviour
         currentMistakes = 0;
         maxMistakes = baseMistakesLimit;
         isRunning = true;
-        spawnTimer = 3.0f;
+        spawnTimer = 1.0f;
         
         activeTasks.Clear();
         playerScores.Clear();
-        foreach(var p in players) playerScores.Add(p, 0);
+        
+        if (players != null)
+        {
+            foreach(var p in players) 
+            {
+                if(!playerScores.ContainsKey(p)) playerScores.Add(p, 0);
+            }
+        }
 
         StartCoroutine(GameLoop());
     }
 
     IEnumerator GameLoop()
     {
+        yield return new WaitForSeconds(1.0f);
+
         while (isRunning && currentTime > 0 && currentMistakes < maxMistakes)
         {
             currentTime -= Time.deltaTime;
@@ -98,27 +122,28 @@ public class ServerGameController : MonoBehaviour
             
             int type = slot % 3;
 
-            if (type == 1)
+            if (type == 1) // Slider
             {
-                int level = UnityEngine.Random.Range(1, 5);
+                int level = UnityEngine.Random.Range(1, 5); // 1 a 4
                 t.targetValue = (float)level;
                 string sysName = systems[UnityEngine.Random.Range(0, systems.Length)];
                 t.description = $"Ajustar {sysName}\nal NIVEL {level}";
             }
-            else if (type == 2)
+            else if (type == 2) // Toggle
             {
                 bool targetState = UnityEngine.Random.value > 0.5f;
                 t.targetValue = targetState ? 1f : 0f;
                 string sysName = systems[UnityEngine.Random.Range(0, systems.Length)];
                 t.description = targetState ? $"ACTIVAR\n{sysName}" : $"DESACTIVAR\n{sysName}";
             }
-            else
+            else // Boton
             {
                 t.targetValue = 1f; 
                 t.description = $"{actions[UnityEngine.Random.Range(0, actions.Length)]}\n{systems[UnityEngine.Random.Range(0, systems.Length)]}";
             }
 
             activeTasks.Add(slot, t);
+            Debug.Log($"Tarea generada en slot {slot}: {t.description}");
         }
     }
 
@@ -150,15 +175,15 @@ public class ServerGameController : MonoBehaviour
             bool success = false;
             int type = slotIndex % 3;
 
-            if (type == 1)
+            if (type == 1) // Slider
             {
                 if (Mathf.Abs(inputValue - task.targetValue) < 0.1f) success = true;
             }
-            else if (type == 2)
+            else if (type == 2) // Toggle
             {
                 if (Mathf.Abs(inputValue - task.targetValue) < 0.1f) success = true;
             }
-            else
+            else // Boton
             {
                 success = true;
             }
@@ -167,17 +192,21 @@ public class ServerGameController : MonoBehaviour
             {
                 activeTasks.Remove(slotIndex);
                 if (playerScores.ContainsKey(playerName)) playerScores[playerName] += 100;
+                BroadcastState();
             }
         }
         else
         {
             currentMistakes++;
             if (playerScores.ContainsKey(playerName)) playerScores[playerName] -= 50;
+            BroadcastState();
         }
     }
 
     void BroadcastState()
     {
+        if (serverManager == null) return;
+
         GameStateData state = new GameStateData();
         state.timeRemaining = currentTime;
         state.currentMistakes = currentMistakes;
@@ -200,6 +229,7 @@ public class ServerGameController : MonoBehaviour
         foreach(var p in sorted) data.scores += $"{p.Key}: {p.Value}\n";
 
         string json = JsonUtility.ToJson(data);
-        serverManager.BroadcastMessage(new NetMessage("GAME_OVER", json));
+        if(serverManager != null)
+            serverManager.BroadcastMessage(new NetMessage("GAME_OVER", json));
     }
 }

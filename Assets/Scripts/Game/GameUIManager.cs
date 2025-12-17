@@ -77,11 +77,18 @@ public class GameUIManager : MonoBehaviour
 
     void OnModuleClick(int slotIndex, float value)
     {
-        ClientManager.instance.SendGameInput(slotIndex, value);
+        if (ClientManager.instance != null)
+        {
+            ClientManager.instance.SendGameInput(slotIndex, value);
+        }
     }
 
-    void UpdateUI(GameStateData data)
+    void UpdateUI(string json)
     {
+        GameStateData data = JsonUtility.FromJson<GameStateData>(json);
+
+        if (data == null) return;
+
         if(timerText != null) timerText.text = $"{Mathf.Ceil(data.timeRemaining)}s";
         if(mistakesText != null) mistakesText.text = $"{data.currentMistakes}/{data.maxMistakes}";
 
@@ -92,7 +99,7 @@ public class GameUIManager : MonoBehaviour
             modules[i].Refresh("", false);
         }
 
-        if (data.tasks.Count > 0)
+        if (data.tasks != null && data.tasks.Count > 0)
         {
             instructions = "| ";
             foreach (var task in data.tasks)
@@ -100,7 +107,6 @@ public class GameUIManager : MonoBehaviour
                 if (task.slotIndex >= 0 && task.slotIndex < modules.Count)
                 {
                     modules[task.slotIndex].Refresh(task.description, true);
-                    
                     string flatDescription = task.description.Replace("\n", " ");
                     instructions += $"{flatDescription} (Mod {task.slotIndex}) | ";
                 }
@@ -114,8 +120,12 @@ public class GameUIManager : MonoBehaviour
         if(instructionsLabel != null) instructionsLabel.text = instructions;
     }
 
-    void ShowGameOver(GameOverData data)
+    void ShowGameOver(string json)
     {
+        GameOverData data = JsonUtility.FromJson<GameOverData>(json);
+        
+        if (data == null) return;
+
         gridParent.gameObject.SetActive(false);
         gameOverPanel.SetActive(true);
         

@@ -1,19 +1,31 @@
-using UnityEngine;
-using System;
 
-[Serializable]
+
+using UnityEngine;
+
+[System.Serializable]
 public class NetMessage
 {
-    public string opCode;
-    public string msgType; 
+    public string msgType;
     public string msgData;
-    public string messageId; 
-
-    public NetMessage(string op, string data)
+    // Aquí podemos añadir más campos fácilmente, ej:
+    // public string senderName;
+    // public int value;
+    
+    public NetMessage(string type, string data)
     {
-        this.opCode = op;
+        this.msgType = type;
         this.msgData = data;
-        this.msgType = op;
-        this.messageId = Guid.NewGuid().ToString(); 
+    }
+
+    public byte[] ToBytes()
+    {
+        string jsonMessage = JsonUtility.ToJson(this);
+        return NetworkGlobals.ENCODING.GetBytes(jsonMessage);
+    }
+
+    public static NetMessage FromBytes(byte[] bytes)
+    {
+        string jsonMessage = NetworkGlobals.ENCODING.GetString(bytes);
+        return JsonUtility.FromJson<NetMessage>(jsonMessage);
     }
 }
