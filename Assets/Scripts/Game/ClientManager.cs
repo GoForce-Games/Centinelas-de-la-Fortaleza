@@ -47,6 +47,7 @@ public class ClientManager : MonoBehaviour
     private NetMessage pingMsg = new NetMessage("PING", "client");
     private NetMessage pongMsg = new NetMessage("PONG", "client");
 
+    public event Action<string> OnAnimReceived;
 
     void Awake()
     {
@@ -227,7 +228,9 @@ public class ClientManager : MonoBehaviour
 
                 case "PONG":
                     break;
-                
+                case "ANIM_TRIGGER":
+                    OnAnimReceived?.Invoke(msg.msgData);
+                    break;
                 case NetworkGlobals.MODULE_MANAGER_EVENT_KEY:
                     ModuleManager.ClientProcessReceive(msg);
                     break;

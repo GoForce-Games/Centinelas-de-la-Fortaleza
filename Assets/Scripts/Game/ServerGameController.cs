@@ -46,12 +46,10 @@ public class ServerGameController : MonoBehaviour
     {
         if (ServerManager.instance != null)
         {
-            Debug.Log("ServerGameController: Iniciando lógica de juego (HOST)...");
             Initialize(ServerManager.instance, ServerManager.instance.GetConnectedPlayers());
         }
         else
         {
-            Debug.Log("ServerGameController: Detectado modo CLIENTE. Destruyendo controlador lógico.");
             Destroy(this.gameObject);
         }
     }
@@ -75,6 +73,8 @@ public class ServerGameController : MonoBehaviour
                 if(!playerScores.ContainsKey(p)) playerScores.Add(p, 0);
             }
         }
+
+        if (serverManager != null) serverManager.UpdatePlayerListForAll();
 
         StartCoroutine(GameLoop());
     }
@@ -122,28 +122,27 @@ public class ServerGameController : MonoBehaviour
             
             int type = slot % 3;
 
-            if (type == 1) // Slider
+            if (type == 1) 
             {
-                int level = UnityEngine.Random.Range(1, 5); // 1 a 4
+                int level = UnityEngine.Random.Range(1, 5); 
                 t.targetValue = (float)level;
                 string sysName = systems[UnityEngine.Random.Range(0, systems.Length)];
                 t.description = $"Ajustar {sysName}\nal NIVEL {level}";
             }
-            else if (type == 2) // Toggle
+            else if (type == 2) 
             {
                 bool targetState = UnityEngine.Random.value > 0.5f;
                 t.targetValue = targetState ? 1f : 0f;
                 string sysName = systems[UnityEngine.Random.Range(0, systems.Length)];
                 t.description = targetState ? $"ACTIVAR\n{sysName}" : $"DESACTIVAR\n{sysName}";
             }
-            else // Boton
+            else 
             {
                 t.targetValue = 1f; 
                 t.description = $"{actions[UnityEngine.Random.Range(0, actions.Length)]}\n{systems[UnityEngine.Random.Range(0, systems.Length)]}";
             }
 
             activeTasks.Add(slot, t);
-            Debug.Log($"Tarea generada en slot {slot}: {t.description}");
         }
     }
 
@@ -156,6 +155,7 @@ public class ServerGameController : MonoBehaviour
             {
                 toRemove.Add(kvp.Key);
                 currentMistakes++;
+                SendAnimTrigger("Todos", "sad"); 
             }
         }
 
@@ -175,15 +175,15 @@ public class ServerGameController : MonoBehaviour
             bool success = false;
             int type = slotIndex % 3;
 
-            if (type == 1) // Slider
+            if (type == 1) 
             {
                 if (Mathf.Abs(inputValue - task.targetValue) < 0.1f) success = true;
             }
-            else if (type == 2) // Toggle
+            else if (type == 2) 
             {
                 if (Mathf.Abs(inputValue - task.targetValue) < 0.1f) success = true;
             }
-            else // Boton
+            else 
             {
                 success = true;
             }
@@ -192,6 +192,7 @@ public class ServerGameController : MonoBehaviour
             {
                 activeTasks.Remove(slotIndex);
                 if (playerScores.ContainsKey(playerName)) playerScores[playerName] += 100;
+                SendAnimTrigger(playerName, "happy");
                 BroadcastState();
             }
         }
@@ -199,8 +200,21 @@ public class ServerGameController : MonoBehaviour
         {
             currentMistakes++;
             if (playerScores.ContainsKey(playerName)) playerScores[playerName] -= 50;
+            SendAnimTrigger(playerName, "sad");
             BroadcastState();
         }
+    }
+
+    void SendAnimTrigger(string pName, string type)
+    {
+        if (serverManager == null) return;
+        
+        AnimEventData animData = new AnimEventData();
+        animData.playerName = pName;
+        animData.animType = type;
+        
+        string json = JsonUtility.ToJson(animData);
+        serverManager.BroadcastMessage(new NetMessage("ANIM_TRIGGER", json));
     }
 
     void BroadcastState()
