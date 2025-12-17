@@ -228,7 +228,7 @@ public class ClientManager : MonoBehaviour
                 case "PONG":
                     break;
                 
-                case NetworkGlobals.MODULE_MANAGER_EVENT_KEY:
+                case "ModuleAction":
                     ModuleManager.ClientProcessReceive(msg);
                     break;
 

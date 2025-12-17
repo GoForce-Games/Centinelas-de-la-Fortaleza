@@ -161,7 +161,7 @@ public class ServerManager : MonoBehaviour
                 BroadcastMessage(msg);
                 break;
 
-            case NetworkGlobals.MODULE_MANAGER_EVENT_KEY:
+            case "ModuleAction":
                 EnqueueToMainThread(()=> ModuleManager.ServerProcessReceive(msg));
                 break;
 
