@@ -8,16 +8,11 @@ public class MainMenuUI : MonoBehaviour
     public TMP_InputField nameInputField;
 
     [Header("Botones")]
-    public Button createTcpButton;
-    public Button joinTcpButton;
     public Button createUdpButton;
     public Button joinUdpButton;
 
     void Start()
     {
-        // Asignamos las funciones a los 4 botones
-        createTcpButton.onClick.AddListener(OnCreateTCP);
-        joinTcpButton.onClick.AddListener(OnJoinTCP);
         createUdpButton.onClick.AddListener(OnCreateUDP);
         joinUdpButton.onClick.AddListener(OnJoinUDP);
 
@@ -36,20 +31,6 @@ public class MainMenuUI : MonoBehaviour
         }
         PlayerPrefs.SetString(NetworkGlobals.PLAYER_NAME_KEY, playerName);
         PlayerPrefs.Save();
-    }
-
-    public void OnCreateTCP()
-    {
-        SavePlayerName();
-        NetworkChoice.ChosenProtocol = NetworkChoice.Protocol.TCP;
-        CreateHostMarkerAndLoadLobby();
-    }
-
-    public void OnJoinTCP()
-    {
-        SavePlayerName();
-        NetworkChoice.ChosenProtocol = NetworkChoice.Protocol.TCP;
-        SceneManager.LoadScene("Lobby");
     }
 
     public void OnCreateUDP()

@@ -35,3 +35,10 @@ public class GameOverData
     public string mvpName;
     public string scores;
 }
+
+[Serializable]
+public class AnimEventData
+{
+    public string playerName;
+    public string animType;
+}
