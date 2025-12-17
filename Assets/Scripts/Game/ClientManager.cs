@@ -80,16 +80,7 @@ public class ClientManager : MonoBehaviour
             });
             receiveThread.IsBackground = true;
             receiveThread.Start();
-
-            IEnumerator PingTimer()
-            {
-                while (!cancelToken.IsCancellationRequested)
-                {
-                    if ((lastSent + pingInterval) < Time.time && !string.IsNullOrEmpty(playerName))
-                        SendMessageToServer(pingMsg);
-                    yield return new WaitForSecondsRealtime(pingInterval);
-                }
-            }
+            
             StartCoroutine(PingTimer());
         }
         catch (System.Exception e)
