@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Game;
 using UnityEngine;
@@ -37,9 +38,9 @@ public class ClientManager : MonoBehaviour
     private float lastReceived = 0;
     [SerializeField] private float pingInterval = 0.5f;
     [SerializeField] private float pingTimeout = 3.0f;
+    [SerializeField] private float ackTimeout = 1.0f;
     [SerializeField] private short consecutiveTimeouts = 0;
-    [SerializeField] private short maxTimeouts = 0;
-
+    [SerializeField] private short maxRetries = 0;
 
     // Self-locking -> thread-safe
     private float CurrentTime
@@ -53,6 +54,8 @@ public class ClientManager : MonoBehaviour
     public string playerName;
     private readonly Queue<Action> actionQueue = new Queue<Action>();
     private readonly Queue<string> messageQueue = new Queue<string>();
+    private List<PendingMessage> acksPending  = new List<PendingMessage>();
+    private List<int> ackedIds = new List<int>();
 
     private NetMessage pingMsg = new NetMessage("PING", "client");
     private NetMessage pongMsg = new NetMessage("PONG", "client");
@@ -183,16 +186,27 @@ public class ClientManager : MonoBehaviour
                 actionQueue.Dequeue()?.Invoke();
             }
         }
+        
+        if (ackedIds.Count > 0)
+        {
+            SendMessageToServer(new NetMessage("ACK", JsonUtility.ToJson(ackedIds.ToArray())));
+            ackedIds.Clear();
+        }
+
         CurrentTime = Time.time;
     }
 
     private void ProcessServerMessage(string jsonMsg)
     {
+        int msgId = -1;
+        string msgType = "ACK";
         try
         {
             NetMessage msg = JsonUtility.FromJson<NetMessage>(jsonMsg);
             if (msg == null) return;
 
+            msgId = msg.ID;
+            
             switch (msg.msgType)
             {
                 case "CHAT":
@@ -230,6 +244,11 @@ public class ClientManager : MonoBehaviour
                 case "PONG":
                     break;
                 
+                case "ACK":
+                    int[] acknowledgedPackets = JsonUtility.FromJson<int[]>(msg.msgData);
+                    acksPending.RemoveAll(p => acknowledgedPackets.Contains(p.msg.ID));
+                    break;
+                
                 case "ModuleAction":
                     ModuleManager.ClientProcessReceive(msg);
                     break;
@@ -243,6 +262,9 @@ public class ClientManager : MonoBehaviour
         {
             Debug.LogWarning("Error deserializar: " + e.Message);
         }
+        
+        if (msgId > -1 && msgType != "ACK" && msgType != "PING" && msgType != "PONG")
+            ackedIds.Add(msgId);
     }
 
     public void SendChatMessage(string message)
@@ -269,6 +291,29 @@ public class ClientManager : MonoBehaviour
         {
             lock (udpClient)
             {
+                // Check if there's pending packets to resend, resend if ack hasn't been received, remove if too many retries
+                if (acksPending.Count > 0)
+                {
+                    foreach (var pendingMessage in acksPending)
+                    {
+                        if (pendingMessage.retryCount++ >= maxRetries)
+                        {
+                            // Max retries reached, show error in console
+                            Debug.LogWarning($"<color=red>CLIENT [ERROR]:</color> Packet lost with ID {pendingMessage.msg.ID} and type {pendingMessage.msg.msgType} with contents: {pendingMessage.msg.msgData}");
+                            // TODO remove message from list
+                        }
+                        else if (pendingMessage.timeStamp + ackTimeout <= CurrentTime)
+                        {
+                            // Can't call SendToClient recursively, would result in stack overflow
+                            byte[] pendingData = pendingMessage.msg.ToBytes();
+                            udpClient.Send(pendingData, pendingData.Length, serverEndPoint);
+                            pendingMessage.timeStamp = CurrentTime;
+                        }
+                    }
+                    acksPending.RemoveAll(p => p.retryCount > maxRetries );
+                }
+                
+                // Send the new message
                 byte[] data = NetworkGlobals.ENCODING.GetBytes(jsonMessage);
                 udpClient?.Send(data, data.Length, serverEndPoint);
                 lastSent = CurrentTime; 

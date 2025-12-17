@@ -69,7 +69,7 @@ namespace Game
 
         public IEnumerator ClientProcessSend()
         {
-            NetMessage msg = new NetMessage(NetworkGlobals.MODULE_MANAGER_EVENT_KEY, "");
+            NetMessage msg = new NetMessage("ModuleAction", "");
             while (isActiveAndEnabled)
             {
                 if (messagesToSend.Count == 0 || !ClientManager.instance)

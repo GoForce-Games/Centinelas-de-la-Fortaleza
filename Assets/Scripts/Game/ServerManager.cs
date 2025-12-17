@@ -22,14 +22,24 @@ public class ServerManager : MonoBehaviour
     private UdpClient udpListener;
 
     private List<ClientConnection> clients = new List<ClientConnection>();
-    
+
+    private object timeLock;
+    private float _currentTime = Time.time;
     [SerializeField] private float pingInterval = 0.5f;
     [SerializeField] private float pingTimeout = 3.0f;
-    [SerializeField] private short maxRetries = 3;
+    [SerializeField] private float ackTimeout = 1.0f;
+    [SerializeField] private short maxRetries = 3; // Applies to both timeouts and missed packages
     
     private byte[] pingMsg = NetworkGlobals.ENCODING.GetBytes("{\"msgType\":\"PING\",\"msgData\":\"host\"}");
     private byte[] pongMsg = NetworkGlobals.ENCODING.GetBytes("{\"msgType\":\"PONG\",\"msgData\":\"host\"}");
-    
+
+    // Self-locking -> thread-safe
+    private float CurrentTime
+    {
+        get { lock(timeLock) return _currentTime; }
+        set { lock(timeLock) _currentTime = value; }
+    }
+
     void Awake()
     {
         if (instance == null)
@@ -69,6 +79,18 @@ public class ServerManager : MonoBehaviour
                 mainThreadActions.Dequeue().Invoke();
             }
         }
+        
+        // Send accumulated packet acknowledgements
+        lock(clients)
+            foreach (var clientConnection in clients)
+            {
+                if (clientConnection.ackedIds.Count > 0)
+                {
+                    SendToClient(new NetMessage("ACK", JsonUtility.ToJson(clientConnection.ackedIds.ToArray())), clientConnection);
+                }
+            }
+
+        CurrentTime = Time.time;
     }
 
     private void ListenForUdpPackets()
@@ -125,7 +147,7 @@ public class ServerManager : MonoBehaviour
                 lock (clients)
                 {
                     sender.name = senderName; 
-                    EnqueueToMainThread(() => { lock (clients) sender.lastReceived = Time.time; });
+                    sender.lastReceived = CurrentTime;
                 }
                 HandlePlayerJoin(sender);
                 break;
@@ -135,10 +157,16 @@ public class ServerManager : MonoBehaviour
                 break;
 
             case "PING":
+                // pongMsg is an ACK package itself, no need to check if target receives it 
                 SendToClient(pongMsg, sender);
                 break;
 
             case "PONG":
+                break;
+            
+            case "ACK":
+                int[] acknowledgedPackets = JsonUtility.FromJson<int[]>(msg.msgData);
+                sender.ackPending.RemoveAll(p => acknowledgedPackets.Contains(p.msg.ID));
                 break;
 
             case "CHAT":
@@ -169,6 +197,12 @@ public class ServerManager : MonoBehaviour
                 Debug.LogWarning($"Comando desconocido: {msg.msgType}");
                 break;
         }
+
+        // Prevent ACK loop. PONG is ACK without data and acts as PING's acknowledgement packet
+        if (msg.msgType != "ACK" && msg.msgType != "PONG" && msg.msgType != "PING")
+        {
+            sender.ackedIds.Add(msg.ID);
+        }
     }
     
     private void HandlePlayerJoin(ClientConnection cc)
@@ -197,21 +231,45 @@ public class ServerManager : MonoBehaviour
         UpdatePlayerListForAll();
     }
 
+    //Send to individual client, check for ACK packet afterwards in main loop
     public void SendToClient(NetMessage msg, ClientConnection cc)
     {
         byte[] data = msg.ToBytes();
         SendToClient(data, cc);
+        cc.ackPending.Add(new PendingMessage(msg, CurrentTime));
     }
 
+    // Calling this directly by itself WILL NOT check for an ACK packet
     public void SendToClient(byte[] bytes, ClientConnection cc)
     {
-        if (udpListener != null)
+        if (udpListener == null) return;
+        
+        // Resend pending packets first
+        if (cc.ackPending.Count > 0)
         {
-            udpListener.Send(bytes, bytes.Length, cc.endPoint);
-            EnqueueToMainThread(()=> OnSendMessageToClient(cc));
+            foreach (var pendingMessage in cc.ackPending)
+            {
+                if (pendingMessage.retryCount++ >= maxRetries)
+                {
+                    // Max retries reached, show error in console
+                    Debug.LogWarning($"<color=red>SERVER [ERROR]:</color> Packet lost with ID {pendingMessage.msg.ID}, target client {cc.endPoint} and type {pendingMessage.msg.msgType} with contents: {pendingMessage.msg.msgData}");
+                }
+                else if (pendingMessage.timeStamp + ackTimeout <= CurrentTime)
+                {
+                    // Can't call SendToClient recursively, would result in stack overflow
+                    byte[] data = pendingMessage.msg.ToBytes();
+                    udpListener.Send(data, data.Length, cc.endPoint);
+                    pendingMessage.timeStamp = CurrentTime;
+                }
+            }
+            cc.ackPending.RemoveAll(p => p.retryCount > maxRetries );
         }
+        
+        udpListener.Send(bytes, bytes.Length, cc.endPoint);
+        EnqueueToMainThread(()=> OnSendMessageToClient(cc));
     }
     
+    // Same as SendToClient(NetMessage, ClientConnection), but for all clients
     public void BroadcastMessage(NetMessage msg)
     {
         byte[] data =  msg.ToBytes();
@@ -222,7 +280,9 @@ public class ServerManager : MonoBehaviour
             {
                 try
                 {
+                    // Send data and save it to ack pending list to check later
                     SendToClient(data, clientConnection);
+                    clientConnection.ackPending.Add(new PendingMessage(msg, CurrentTime));
                 }
                 catch (Exception e)
                 {
@@ -282,8 +342,9 @@ public class ServerManager : MonoBehaviour
                 if (clientConnection.connectionToken.IsCancellationRequested) break;
                 yield return new WaitForSecondsRealtime(pingInterval);
                 
-                if (clientConnection.lastSent + pingTimeout < Time.time)
+                if (clientConnection.lastSent + pingTimeout < CurrentTime)
                 {
+                    // pingMsg already has a dedicated ACK message equivalent to prevent spam
                     lock (clients) SendToClient(pingMsg, clientConnection);
                 }
                 else
@@ -298,14 +359,12 @@ public class ServerManager : MonoBehaviour
 
     void OnMessageReceived(NetMessage msg, ClientConnection sender)
     {
-        sender.lastReceived = Time.time;
+        sender.lastReceived = CurrentTime;
     }
 
     void OnSendMessageToClient(ClientConnection clientConnection)
     {
-        lock(clients)
-            clientConnection.lastSent = Time.time;
-
+        clientConnection.lastSent = CurrentTime;
         clientConnection.consecutiveTimeouts = 0;
     }
     
