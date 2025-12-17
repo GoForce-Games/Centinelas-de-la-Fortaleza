@@ -35,6 +35,8 @@ public class ClientManager : MonoBehaviour
     private float lastReceived = 0;
     [SerializeField] private float pingInterval = 0.5f;
     [SerializeField] private float pingTimeout = 3.0f;
+    [SerializeField] private short consecutiveTimeouts = 0;
+    [SerializeField] private short maxTimeouts = 0;
 
     private UIManagerReceptor uiReceptor;
 
@@ -144,12 +146,16 @@ public class ClientManager : MonoBehaviour
                     string jsonMessage = NetworkGlobals.ENCODING.GetString(resultTask.Result.Buffer);
                     EnqueueToMainThread(jsonMessage); 
                     EnqueueToMainThread(() => lastReceived = Time.time);
+                    consecutiveTimeouts = 0;
                 }
                 else
                 {
-                    EnqueueToMainThread(() => Debug.LogError("Error en cliente UDP: Timeout"));
-                    isRunning = false;
-                    cancelToken.Cancel();
+                    EnqueueToMainThread(() => Debug.LogError($"Error en cliente UDP: Timeout (Try {++consecutiveTimeouts}/{maxTimeouts}"));
+                    if (consecutiveTimeouts >= maxTimeouts)
+                    {
+                        isRunning = false;
+                        cancelToken.Cancel();
+                    }
                 }
             }
         }
