@@ -4,14 +4,21 @@ Centinelas de la Fortaleza is a game where you will receive waves of enemies at 
 
 To achieve this, players must be highly synchronized, as actions that need to be completed within a time limit will appear on their screens, such as "Repair the drawbridge." One player will receive the order and must communicate it to all players so it can be resolved. The orders that appear on one player's screen must be activated on the screen of the player who has that action available.
 
-- Server-Client connection reworked
-  - TCP removed
-  - Timeouts implemented (missing reconnection)
-  - Client data is now stored within a single struct per client instead of various member variables within ServerManager
+- Gameplay implementation redone
+  - Game is now competitive and co-op
+  - All players see the same set of tasks
+  - First player to complete one gets points
+  - If too many tasks go uncompleted the game is lost
+  - Highest contributor wins
 - World replication
-  - "Monigote" responds to user action across different devices (change state and speed)
+  - "Monigote" responds to user action across different devices (make it walk around, stop, etc. All synced across devices)
+  - Individual task modules are reflected on every player's screen
 - Server and Client connection are now independent from stored scene references and are now always loaded after connection is established
-- Streamlined UI elements to use the same system (ModuleManager and InteractableModule)
+- UDP improvements
+  - Packets are now acknowledge by the receiver and resent if not acknowledged within a certain time window
+  - Less actions are delegated to the main thread
+- Reworked UI flow from game launch to game start
+  - Separated lobby scene from gameplay scene
 
 
 # v1.0
@@ -23,18 +30,20 @@ To achieve this, players must be highly synchronized, as actions that need to be
 - Gameplay implementation
 - World replication fixes
 - UI
+- Bug fixing
 
 ### Edgar Mesa Domínguez
 - UDP connection refactor
 - Gameplay implementation
 - World replication fixes
 - UI
+- Bug fixing
 
 ### Roger Puchol Celma
 - UDP connection refactor
 - UDP packet reliability
-- Packet timeout
 - World replication system
+- Packet timeout
 - Bug fixing
 
 ### Èric Palomares Rodríguez
@@ -48,5 +57,6 @@ To achieve this, players must be highly synchronized, as actions that need to be
 - Cleanup code
 
 ## Known issues
-- UI images don't scale properly
+- UI doesn't scale properly (16:9 for best experience)
+- Some buttons are covered by invisible UI elements, making it harder to click them
 
