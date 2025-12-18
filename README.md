@@ -6,12 +6,14 @@ To achieve this, players must be highly synchronized, as actions that need to be
 
 - Gameplay implementation redone
   - Game is now competitive and co-op
+  - 4 players max
   - All players see the same set of tasks
   - First player to complete one gets points
   - If too many tasks go uncompleted the game is lost
   - Highest contributor wins
 - World replication
   - "Monigote" responds to user action across different devices (make it walk around, stop, etc. All synced across devices)
+  - Each player gets its own character that reacts to them completing or failing tasks
   - Individual task modules are reflected on every player's screen
 - Server and Client connection are now independent from stored scene references and are now always loaded after connection is established
 - UDP improvements
