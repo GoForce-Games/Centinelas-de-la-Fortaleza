@@ -14,40 +14,39 @@ To achieve this, players must be highly synchronized, as actions that need to be
 - Streamlined UI elements to use the same system (ModuleManager and InteractableModule)
 
 
-# v0.1
+# v1.0
 
 ## Contributors & Tasks
 
 ### Pau Mena Torres
-- Import Lab2 Base
-- JSON serialization and deserialization
-- UI interactable objects
-- Improve client and server connection
-- Bug fixing
-- Presentation
+- UDP connection refactor
+- Gameplay implementation
+- World replication fixes
+- UI
 
 ### Edgar Mesa Domínguez
-- Import Lab2 Base
-- JSON serialization and deserialization
-- UI interactable objects
-- Improve client and server connection
-- Presentation
-- Bug Fixing
+- UDP connection refactor
+- Gameplay implementation
+- World replication fixes
+- UI
 
 ### Roger Puchol Celma
-- Module Manager implementation
-- Interactable Module and derivatives
+- UDP connection refactor
+- UDP packet reliability
+- Packet timeout
+- World replication system
+- Bug fixing
 
 ### Èric Palomares Rodríguez
+- UDP packet reliability
+- UDP connection refactor
 - Presentation
 
 ## Next Steps
-- Change serialization method to a custom serializer that filters unnecessary data.
-- Change protocol method to mix them.
-- Implement game mechanics
-- Continue improving UX and UI.
+- Reduce packet frequency (too many packets per second compared to game update needs)
+- Optimize package size
+- Cleanup code
 
 ## Known issues
-- Slider bar serialization may not be working as expected in some cases. Hotfix planned.
-
+- UI images don't scale properly
 
