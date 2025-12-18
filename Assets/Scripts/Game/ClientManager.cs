@@ -56,6 +56,7 @@ public class ClientManager : MonoBehaviour
     private readonly Queue<string> messageQueue = new Queue<string>();
     private List<PendingMessage> acksPending  = new List<PendingMessage>();
     private List<int> ackedIds = new List<int>();
+    private FixedSizedQueue<int> recentIds = new FixedSizedQueue<int>(100);
 
     private NetMessage pingMsg = new NetMessage("PING", "client");
     private NetMessage pongMsg = new NetMessage("PONG", "client");
@@ -210,6 +211,9 @@ public class ClientManager : MonoBehaviour
             msgId = msg.ID;
             msgType = msg.msgType;
             
+            // If packet is received a second time, skip it
+            if (recentIds.Contains(msgId)) return;
+            
             switch (msg.msgType)
             {
                 case "CHAT":
@@ -271,7 +275,10 @@ public class ClientManager : MonoBehaviour
         
         // Prevent ACK loop. PONG is ACK without data and acts as PING's acknowledgement packet
         if (msgId > -1 && msgType != "ACK" && msgType != "PING" && msgType != "PONG")
-            lock(ackedIds) ackedIds.Add(msgId);
+        {
+            lock (ackedIds) ackedIds.Add(msgId);
+            recentIds.Enqueue(msgId);
+        }
     }
 
     public void SendChatMessage(string message)

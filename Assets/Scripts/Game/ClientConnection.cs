@@ -24,6 +24,7 @@ namespace Game
         
         // UDP reliability - Received from client
         public List<int> ackedIds = new List<int>();
+        public FixedSizedQueue<int> recentIds = new FixedSizedQueue<int>(100);
         
         public ClientConnection(IPEndPoint endPoint)
         {

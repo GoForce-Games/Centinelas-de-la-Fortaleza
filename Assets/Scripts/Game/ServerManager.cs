@@ -141,6 +141,9 @@ public class ServerManager : MonoBehaviour
     
     private void ProcessMessage(NetMessage msg, ClientConnection sender)
     {
+        // If packet is received a second time, skip it
+        if (sender.recentIds.Contains(msg.ID)) return;
+        
         switch (msg.msgType)
         {
             case "JOIN":
@@ -203,6 +206,7 @@ public class ServerManager : MonoBehaviour
         if (msg.msgType != "ACK" && msg.msgType != "PONG" && msg.msgType != "PING")
         {
             sender.ackedIds.Add(msg.ID);
+            sender.recentIds.Enqueue(msg.ID);
         }
     }
     
