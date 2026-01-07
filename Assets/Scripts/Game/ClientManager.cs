@@ -338,10 +338,7 @@ public class ClientManager : MonoBehaviour
             Debug.LogError("Error al enviar mensaje: " + e.Message);
         }
     }
-
-    /// <summary>
-    /// Sends cursor position to server WITHOUT ACK (ephemeral data, optimized for real-time)
-    /// </summary>
+    
     public void SendCursorPosition(CursorData cursorData)
     {
         if (udpClient == null || !isRunning) return;
