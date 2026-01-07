@@ -80,22 +80,16 @@ public class ServerManager : MonoBehaviour
             }
         }
         
-        // Send accumulated packet acknowledgements - use snapshot to avoid holding lock during I/O
-        List<ClientConnection> clientsSnapshot;
+        // Send accumulated packet acknowledgements
         lock(clients)
-        {
-            clientsSnapshot = clients.ToList();
-        }
-        
-        foreach (var clientConnection in clientsSnapshot)
-        {
-            if (clientConnection == null) continue;
-            if (clientConnection.ackedIds.Count > 0)
+            foreach (var clientConnection in clients)
             {
-                SendToClient(new NetMessage("ACK", JsonHelper.ToJson(clientConnection.ackedIds.ToArray())), clientConnection);
-                clientConnection.ackedIds.Clear();
+                if (clientConnection.ackedIds.Count > 0)
+                {
+                    SendToClient(new NetMessage("ACK", JsonHelper.ToJson(clientConnection.ackedIds.ToArray())), clientConnection);
+                    clientConnection.ackedIds.Clear();
+                }
             }
-        }
 
         CurrentTime = Time.time;
     }
@@ -173,10 +167,7 @@ public class ServerManager : MonoBehaviour
             
             case "ACK":
                 int[] acknowledgedPackets = JsonHelper.FromJson<int>(msg.msgData);
-                lock (sender.ackPending)
-                {
-                    sender.ackPending.RemoveAll(p => acknowledgedPackets.Contains(p.msg.ID));
-                }
+                sender.ackPending.RemoveAll(p => acknowledgedPackets.Contains(p.msg.ID));
                 break;
 
             case "CHAT":
@@ -259,32 +250,16 @@ public class ServerManager : MonoBehaviour
     {
         if (udpListener == null) return;
         
-        // Resend pending packets first - use snapshot to avoid concurrent modification
-        List<PendingMessage> pendingSnapshot;
-        List<PendingMessage> toRemove = new List<PendingMessage>();
-        
-        lock (cc.ackPending)
+        // Resend pending packets first
+        if (cc.ackPending.Count > 0)
         {
-            if (cc.ackPending.Count > 0)
-            {
-                pendingSnapshot = cc.ackPending.ToList();
-            }
-            else
-            {
-                pendingSnapshot = null;
-            }
-        }
-        
-        if (pendingSnapshot != null)
-        {
-            foreach (var pendingMessage in pendingSnapshot)
+            foreach (var pendingMessage in cc.ackPending)
             {
                 if (pendingMessage.retryCount >= maxRetries)
                 {
                     // Max retries reached, show error in console
                     if (pendingMessage.msg.msgType != "ACK")
                         Debug.LogWarning($"<color=red>SERVER [ERROR]:</color> Packet lost with ID {pendingMessage.msg.ID}, target client {cc.endPoint} and type {pendingMessage.msg.msgType} with contents: {pendingMessage.msg.msgData}");
-                    toRemove.Add(pendingMessage);
                 }
                 else if (pendingMessage.timeStamp + ackTimeout <= CurrentTime)
                 {
@@ -295,18 +270,7 @@ public class ServerManager : MonoBehaviour
                     pendingMessage.retryCount++;
                 }
             }
-            
-            // Remove expired messages with lock
-            if (toRemove.Count > 0)
-            {
-                lock (cc.ackPending)
-                {
-                    foreach (var msg in toRemove)
-                    {
-                        cc.ackPending.Remove(msg);
-                    }
-                }
-            }
+            cc.ackPending.RemoveAll(p => p.retryCount > maxRetries );
         }
         
         udpListener.Send(bytes, bytes.Length, cc.endPoint);
