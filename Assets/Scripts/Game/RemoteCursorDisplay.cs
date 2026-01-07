@@ -5,18 +5,21 @@ using TMPro;
 
 namespace Game
 {
+    
+    
+    
     public class RemoteCursorDisplay : MonoBehaviour
     {
         [Header("Prefab & Container")]
         [SerializeField] private GameObject cursorPrefab;
+        [SerializeField] private RectTransform cursorContainer;
         
         [Header("Cursor Appearance")]
         [SerializeField] private float cursorSize = 32f;
-        [SerializeField] private float smoothSpeed = 15f;
+        [SerializeField] private float smoothSpeed = 15f; 
         
         private Dictionary<string, RemoteCursor> activeCursors = new Dictionary<string, RemoteCursor>();
         private Canvas parentCanvas;
-        private RectTransform canvasRectTransform;
         
         private class RemoteCursor
         {
@@ -30,10 +33,19 @@ namespace Game
         private void Awake()
         {
             parentCanvas = GetComponentInParent<Canvas>();
-            if (parentCanvas != null)
+            
+            
+            if (cursorContainer == null)
             {
-                canvasRectTransform = parentCanvas.GetComponent<RectTransform>();
+                GameObject container = new GameObject("RemoteCursors");
+                cursorContainer = container.AddComponent<RectTransform>();
+                cursorContainer.SetParent(transform, false);
+                cursorContainer.anchorMin = Vector2.zero;
+                cursorContainer.anchorMax = Vector2.one;
+                cursorContainer.offsetMin = Vector2.zero;
+                cursorContainer.offsetMax = Vector2.zero;
             }
+            
             
             if (cursorPrefab == null)
             {
@@ -59,6 +71,7 @@ namespace Game
         
         private void Update()
         {
+            
             foreach (var cursor in activeCursors.Values)
             {
                 if (cursor.rectTransform != null)
@@ -71,7 +84,7 @@ namespace Game
                 }
             }
             
-            // Remove stale cursors
+            
             List<string> toRemove = new List<string>();
             float currentTime = Time.time;
             foreach (var kvp in activeCursors)
@@ -108,29 +121,13 @@ namespace Game
                 activeCursors[data.playerName] = cursor;
             }
             
-            if (canvasRectTransform == null) return;
+            Vector2 containerSize = cursorContainer.rect.size;
             
-            // Convert normalized position (0-1) to screen coordinates
-            Vector2 screenPoint = new Vector2(
-                data.posX * Screen.width,
-                data.posY * Screen.height
+            cursor.targetPosition = new Vector2(
+                data.posX * containerSize.x,
+                data.posY * containerSize.y
             );
             
-            // Convert screen point to canvas local position
-            Camera cam = null;
-            if (parentCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
-            {
-                cam = parentCanvas.worldCamera;
-            }
-            
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                canvasRectTransform,
-                screenPoint,
-                cam,
-                out Vector2 localPoint
-            );
-            
-            cursor.targetPosition = localPoint;
             cursor.lastUpdateTime = Time.time;
             
             Color playerColor = CursorNetworkManager.GetPlayerColor(data.playerColorIndex);
@@ -140,17 +137,16 @@ namespace Game
         
         private RemoteCursor CreateCursor(CursorData data)
         {
-            // Create cursor as child of canvas, not container
-            GameObject cursorObj = Instantiate(cursorPrefab, canvasRectTransform);
+            GameObject cursorObj = Instantiate(cursorPrefab, cursorContainer);
             cursorObj.SetActive(true);
             cursorObj.name = $"Cursor_{data.playerName}";
             
             RectTransform rectTransform = cursorObj.GetComponent<RectTransform>();
             
-            // Center anchors and pivot at top-left of cursor
-            rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-            rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            rectTransform.pivot = new Vector2(0, 1);
+            // Set anchors to bottom-left corner for simple positioning
+            rectTransform.anchorMin = Vector2.zero;
+            rectTransform.anchorMax = Vector2.zero;
+            rectTransform.pivot = new Vector2(0, 1); // Top-left of cursor icon
             
             RemoteCursor cursor = new RemoteCursor
             {
@@ -175,32 +171,28 @@ namespace Game
         
         private void CreateDefaultCursorPrefab()
         {
+            
             cursorPrefab = new GameObject("DefaultCursor");
             RectTransform rect = cursorPrefab.AddComponent<RectTransform>();
             rect.sizeDelta = new Vector2(cursorSize, cursorSize + 20);
             
-            // Cursor icon
+            
             GameObject iconObj = new GameObject("Icon");
             iconObj.transform.SetParent(cursorPrefab.transform, false);
             RectTransform iconRect = iconObj.AddComponent<RectTransform>();
             iconRect.sizeDelta = new Vector2(cursorSize, cursorSize);
-            iconRect.anchorMin = new Vector2(0, 1);
-            iconRect.anchorMax = new Vector2(0, 1);
-            iconRect.pivot = new Vector2(0, 1);
-            iconRect.anchoredPosition = Vector2.zero;
+            iconRect.anchoredPosition = new Vector2(cursorSize * 0.25f, -cursorSize * 0.25f);
             
             Image iconImage = iconObj.AddComponent<Image>();
+            
             iconImage.sprite = CreateArrowSprite();
             iconImage.raycastTarget = false;
             
-            // Player name label
+            
             GameObject labelObj = new GameObject("NameLabel");
             labelObj.transform.SetParent(cursorPrefab.transform, false);
             RectTransform labelRect = labelObj.AddComponent<RectTransform>();
-            labelRect.anchorMin = new Vector2(0, 1);
-            labelRect.anchorMax = new Vector2(0, 1);
-            labelRect.pivot = new Vector2(0, 1);
-            labelRect.anchoredPosition = new Vector2(cursorSize * 0.5f, -cursorSize);
+            labelRect.anchoredPosition = new Vector2(cursorSize * 0.5f, -cursorSize - 5);
             labelRect.sizeDelta = new Vector2(100, 20);
             
             TMP_Text label = labelObj.AddComponent<TextMeshProUGUI>();
@@ -208,19 +200,22 @@ namespace Game
             label.alignment = TextAlignmentOptions.Left;
             label.raycastTarget = false;
             
-            cursorPrefab.SetActive(false);
+            cursorPrefab.SetActive(false); 
         }
         
         private Sprite CreateArrowSprite()
         {
+            
             int size = 32;
             Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
             Color[] pixels = new Color[size * size];
+            
             
             for (int y = 0; y < size; y++)
             {
                 for (int x = 0; x < size; x++)
                 {
+                    
                     bool inArrow = (x + y < size) && (x < size * 0.7f || y < size * 0.3f);
                     pixels[y * size + x] = inArrow ? Color.white : Color.clear;
                 }
