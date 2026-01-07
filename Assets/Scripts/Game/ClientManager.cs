@@ -23,8 +23,6 @@ public class ClientManager : MonoBehaviour
     public event Action<string> OnGameSyncReceived;
     public event Action<string> OnGameOverReceived;
     
-    public event Action<string> OnCursorMoveReceived;
-
     private Thread receiveThread;
     private bool isRunning = false;
 
@@ -198,20 +196,6 @@ public class ClientManager : MonoBehaviour
         }
 
         CurrentTime = Time.time;
-
-        if (isRunning && SceneManager.GetActiveScene().name == "GameScene")
-        {
-            Vector2 mousePos = Input.mousePosition;
-            float normX = mousePos.x / Screen.width;
-            float normY = mousePos.y / Screen.height;
-            
-            CursorData cursorData = new CursorData(playerName, normX, normY);
-            NetMessage cursorMsg = new NetMessage("CURSOR_MOVE", JsonUtility.ToJson(cursorData));
-            
-            string json = JsonUtility.ToJson(cursorMsg);
-            byte[] data = NetworkGlobals.ENCODING.GetBytes(json);
-            udpClient?.Send(data, data.Length, serverEndPoint);
-        }
     }
 
     private void ProcessServerMessage(string jsonMsg)
@@ -275,10 +259,6 @@ public class ClientManager : MonoBehaviour
                     ModuleManager.ClientProcessReceive(msg);
                     break;
 
-                case "CURSOR_MOVE":
-                    OnCursorMoveReceived?.Invoke(msg.msgData);
-                    break;
-                    
                 default:
                     Debug.LogWarning($"Comando desconocido: {msg.msgType}");
                     break;
