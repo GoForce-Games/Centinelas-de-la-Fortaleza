@@ -194,6 +194,10 @@ public class ServerManager : MonoBehaviour
                 EnqueueToMainThread(()=> ModuleManager.ServerProcessReceive(msg));
                 break;
 
+            case "CURSOR_MOVE":
+                BroadcastMessage(msg);
+                break;
+                
             default:
                 Debug.LogWarning($"Comando desconocido: {msg.msgType}");
                 break;
