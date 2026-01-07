@@ -61,6 +61,7 @@ public class ClientManager : MonoBehaviour
     private NetMessage pongMsg = new NetMessage("PONG", "client");
 
     public event Action<string> OnAnimReceived;
+    public event Action<CursorPacket> OnCursorsReceived;
 
     void Awake()
     {
@@ -259,6 +260,11 @@ public class ClientManager : MonoBehaviour
                     ModuleManager.ClientProcessReceive(msg);
                     break;
 
+                case "CURSOR_SYNC":
+                    CursorPacket cursorPacket = JsonUtility.FromJson<CursorPacket>(msg.msgData);
+                    OnCursorsReceived?.Invoke(cursorPacket);
+                    break;
+
                 default:
                     Debug.LogWarning($"Comando desconocido: {msg.msgType}");
                     break;
@@ -330,6 +336,31 @@ public class ClientManager : MonoBehaviour
         catch (System.Exception e)
         {
             Debug.LogError("Error al enviar mensaje: " + e.Message);
+        }
+    }
+
+    /// <summary>
+    /// Sends cursor position to server WITHOUT ACK (ephemeral data, optimized for real-time)
+    /// </summary>
+    public void SendCursorPosition(CursorData cursorData)
+    {
+        if (udpClient == null || !isRunning) return;
+        
+        CursorPacket packet = new CursorPacket();
+        packet.cursors.Add(cursorData);
+        
+        string jsonData = JsonUtility.ToJson(packet);
+        NetMessage msg = new NetMessage("CURSOR_POS", jsonData);
+        
+        try
+        {
+            byte[] data = NetworkGlobals.ENCODING.GetBytes(JsonUtility.ToJson(msg));
+            udpClient.Send(data, data.Length, serverEndPoint);
+        }
+        catch (System.Exception e)
+        {
+            // Silently ignore cursor send errors - ephemeral data
+            Debug.LogWarning("Error cursor send: " + e.Message);
         }
     }
 

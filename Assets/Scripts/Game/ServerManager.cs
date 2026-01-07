@@ -194,6 +194,11 @@ public class ServerManager : MonoBehaviour
                 EnqueueToMainThread(()=> ModuleManager.ServerProcessReceive(msg));
                 break;
 
+            case "CURSOR_POS":
+                // Broadcast cursor position to all clients without ACK (ephemeral data)
+                BroadcastCursorData(msg, sender);
+                break;
+
             default:
                 Debug.LogWarning($"Comando desconocido: {msg.msgType}");
                 break;
@@ -389,5 +394,35 @@ public class ServerManager : MonoBehaviour
         listenerThread?.Abort();
         
         if (udpListener != null) udpListener.Close();
+    }
+
+    /// <summary>
+    /// Broadcasts cursor position data to all clients WITHOUT ACK (ephemeral data)
+    /// </summary>
+    private void BroadcastCursorData(NetMessage msg, ClientConnection sender)
+    {
+        if (udpListener == null) return;
+        
+        // Repackage as CURSOR_SYNC for clients
+        NetMessage syncMsg = new NetMessage("CURSOR_SYNC", msg.msgData);
+        byte[] data = syncMsg.ToBytes();
+        
+        lock (clients)
+        {
+            foreach (var clientConnection in clients)
+            {
+                if (clientConnection == null || clientConnection.endPoint == null) continue;
+                
+                try
+                {
+                    // Send WITHOUT adding to ackPending - cursor data is ephemeral
+                    udpListener.Send(data, data.Length, clientConnection.endPoint);
+                }
+                catch (Exception)
+                {
+                    // Silently ignore cursor broadcast errors - ephemeral data
+                }
+            }
+        }
     }
 }
