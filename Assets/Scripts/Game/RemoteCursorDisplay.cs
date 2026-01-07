@@ -117,29 +117,17 @@ namespace Game
                 return;
             }
             
-            // Convert normalized position (0-1) to screen coordinates
-            Vector2 screenPoint = new Vector2(
-                data.posX * Screen.width,
-                data.posY * Screen.height
-            );
+            // Get the canvas size (this already accounts for Canvas Scaler)
+            Vector2 canvasSize = canvasRectTransform.rect.size;
             
-            // Convert screen point to canvas local position
-            Camera cam = null;
-            if (parentCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
-            {
-                cam = parentCanvas.worldCamera;
-            }
+            // With anchors at bottom-left (0,0), simply multiply normalized pos by canvas size
+            float localX = data.posX * canvasSize.x;
+            float localY = data.posY * canvasSize.y;
             
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                canvasRectTransform,
-                screenPoint,
-                cam,
-                out Vector2 localPoint
-            );
+            cursor.targetPosition = new Vector2(localX, localY);
             
-            Debug.Log($"[RemoteCursorDisplay] {data.playerName} pos: screen({screenPoint.x:F0},{screenPoint.y:F0}) -> local({localPoint.x:F0},{localPoint.y:F0})");
+            Debug.Log($"[RemoteCursorDisplay] {data.playerName} normalized({data.posX:F2},{data.posY:F2}) -> canvas({canvasSize.x:F0}x{canvasSize.y:F0}) -> local({localX:F0},{localY:F0})");
             
-            cursor.targetPosition = localPoint;
             cursor.lastUpdateTime = Time.time;
             
             Color playerColor = CursorNetworkManager.GetPlayerColor(data.playerColorIndex);
@@ -149,17 +137,17 @@ namespace Game
         
         private RemoteCursor CreateCursor(CursorData data)
         {
-            // Create cursor as child of canvas, not container
+            // Create cursor as child of canvas
             GameObject cursorObj = Instantiate(cursorPrefab, canvasRectTransform);
             cursorObj.SetActive(true);
             cursorObj.name = $"Cursor_{data.playerName}";
             
             RectTransform rectTransform = cursorObj.GetComponent<RectTransform>();
             
-            // Center anchors and pivot at top-left of cursor
-            rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-            rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            rectTransform.pivot = new Vector2(0, 1);
+            // IMPORTANT: Set anchors to bottom-left corner for correct positioning
+            rectTransform.anchorMin = Vector2.zero;
+            rectTransform.anchorMax = Vector2.zero;
+            rectTransform.pivot = new Vector2(0, 1); // Pivot at top-left of cursor
             
             RemoteCursor cursor = new RemoteCursor
             {
