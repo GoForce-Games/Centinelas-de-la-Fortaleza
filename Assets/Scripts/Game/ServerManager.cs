@@ -282,30 +282,20 @@ public class ServerManager : MonoBehaviour
     {
         byte[] data =  msg.ToBytes();
         
-        // Create a snapshot to avoid "Collection was modified" exceptions
-        List<ClientConnection> clientsSnapshot;
         lock (clients)
         {
-            clientsSnapshot = clients.ToList();
-        }
-        
-        foreach (var clientConnection in clientsSnapshot)
-        {
-            if (clientConnection == null) continue;
-            
-            try
+            foreach (var clientConnection in clients)
             {
-                // Send data and save it to ack pending list to check later
-                SendToClient(data, clientConnection);
-                lock (clientConnection.ackPending)
+                try
                 {
+                    // Send data and save it to ack pending list to check later
+                    SendToClient(data, clientConnection);
                     clientConnection.ackPending.Add(new PendingMessage(msg, CurrentTime));
                 }
-            }
-            catch (Exception e)
-            {
-                var name = clientConnection.name;
-                EnqueueToMainThread(() => Debug.LogWarning($"Error broadcast a {name}: {e.Message}"));
+                catch (Exception e)
+                {
+                    EnqueueToMainThread(() => Debug.LogWarning($"Error broadcast a {clientConnection.name}: {e.Message}"));
+                }
             }
         }
     }
@@ -417,25 +407,21 @@ public class ServerManager : MonoBehaviour
         NetMessage syncMsg = new NetMessage("CURSOR_SYNC", msg.msgData);
         byte[] data = syncMsg.ToBytes();
         
-        // Create a snapshot to avoid "Collection was modified" exceptions
-        List<ClientConnection> clientsSnapshot;
         lock (clients)
         {
-            clientsSnapshot = clients.ToList();
-        }
-        
-        foreach (var clientConnection in clientsSnapshot)
-        {
-            if (clientConnection == null || clientConnection.endPoint == null) continue;
-            
-            try
+            foreach (var clientConnection in clients)
             {
-                // Send WITHOUT adding to ackPending - cursor data is ephemeral
-                udpListener.Send(data, data.Length, clientConnection.endPoint);
-            }
-            catch (Exception)
-            {
-                // Silently ignore cursor broadcast errors - ephemeral data
+                if (clientConnection == null || clientConnection.endPoint == null) continue;
+                
+                try
+                {
+                    // Send WITHOUT adding to ackPending - cursor data is ephemeral
+                    udpListener.Send(data, data.Length, clientConnection.endPoint);
+                }
+                catch (Exception)
+                {
+                    // Silently ignore cursor broadcast errors - ephemeral data
+                }
             }
         }
     }
