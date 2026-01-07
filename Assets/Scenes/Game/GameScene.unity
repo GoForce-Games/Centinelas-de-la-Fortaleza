@@ -1835,7 +1835,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cursorPrefab: {fileID: 1366379408837752514, guid: 6cff5066df6634663bfe097e23f5f548, type: 3}
   cursorContainer: {fileID: 1558819238614507731, guid: 6cff5066df6634663bfe097e23f5f548, type: 3}
-  cursorSize: 32
+  cursorSize: 5
   smoothSpeed: 15
 --- !u!1 &1850765794
 GameObject:
