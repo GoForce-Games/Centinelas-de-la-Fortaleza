@@ -117,50 +117,48 @@ namespace Game
         {
             if (!activeCursors.TryGetValue(data.playerName, out RemoteCursor cursor))
             {
-                
                 cursor = CreateCursor(data);
                 activeCursors[data.playerName] = cursor;
             }
             
+            Vector2 containerSize = cursorContainer.rect.size;
             
-            
-            Vector2 screenPos = new Vector2(data.posX * Screen.width, data.posY * Screen.height);
-            
-            
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                cursorContainer,
-                screenPos,
-                parentCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : parentCanvas.worldCamera,
-                out Vector2 localPos
+            cursor.targetPosition = new Vector2(
+                data.posX * containerSize.x,
+                data.posY * containerSize.y
             );
-            
-            cursor.targetPosition = localPos;
             
             cursor.lastUpdateTime = Time.time;
             
-            
             Color playerColor = CursorNetworkManager.GetPlayerColor(data.playerColorIndex);
-            cursor.cursorImage.color = playerColor;
+            if (cursor.cursorImage != null)
+                cursor.cursorImage.color = playerColor;
         }
         
         private RemoteCursor CreateCursor(CursorData data)
         {
             GameObject cursorObj = Instantiate(cursorPrefab, cursorContainer);
+            cursorObj.SetActive(true);
             cursorObj.name = $"Cursor_{data.playerName}";
+            
+            RectTransform rectTransform = cursorObj.GetComponent<RectTransform>();
+            
+            // Set anchors to bottom-left corner for simple positioning
+            rectTransform.anchorMin = Vector2.zero;
+            rectTransform.anchorMax = Vector2.zero;
+            rectTransform.pivot = new Vector2(0, 1); // Top-left of cursor icon
             
             RemoteCursor cursor = new RemoteCursor
             {
-                rectTransform = cursorObj.GetComponent<RectTransform>(),
+                rectTransform = rectTransform,
                 cursorImage = cursorObj.GetComponentInChildren<Image>(),
                 nameLabel = cursorObj.GetComponentInChildren<TMP_Text>()
             };
-            
             
             if (cursor.nameLabel != null)
             {
                 cursor.nameLabel.text = data.playerName;
             }
-            
             
             Color playerColor = CursorNetworkManager.GetPlayerColor(data.playerColorIndex);
             if (cursor.cursorImage != null)
