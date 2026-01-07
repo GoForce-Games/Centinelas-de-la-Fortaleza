@@ -123,13 +123,18 @@ namespace Game
             }
             
             
-            RectTransform canvasRect = cursorContainer;
-            Vector2 canvasSize = canvasRect.rect.size;
             
-            cursor.targetPosition = new Vector2(
-                data.posX * canvasSize.x - canvasSize.x * 0.5f,
-                data.posY * canvasSize.y - canvasSize.y * 0.5f
+            Vector2 screenPos = new Vector2(data.posX * Screen.width, data.posY * Screen.height);
+            
+            
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                cursorContainer,
+                screenPos,
+                parentCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : parentCanvas.worldCamera,
+                out Vector2 localPos
             );
+            
+            cursor.targetPosition = localPos;
             
             cursor.lastUpdateTime = Time.time;
             
