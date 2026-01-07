@@ -94,6 +94,8 @@ namespace Game
         {
             if (packet == null || packet.cursors == null) return;
             
+            Debug.Log($"[RemoteCursorDisplay] Received {packet.cursors.Count} cursors");
+            
             foreach (CursorData data in packet.cursors)
             {
                 UpdateOrCreateCursor(data);
@@ -106,9 +108,14 @@ namespace Game
             {
                 cursor = CreateCursor(data);
                 activeCursors[data.playerName] = cursor;
+                Debug.Log($"[RemoteCursorDisplay] Created cursor for {data.playerName}");
             }
             
-            if (canvasRectTransform == null) return;
+            if (canvasRectTransform == null) 
+            {
+                Debug.LogWarning("[RemoteCursorDisplay] canvasRectTransform is null!");
+                return;
+            }
             
             // Convert normalized position (0-1) to screen coordinates
             Vector2 screenPoint = new Vector2(
@@ -129,6 +136,8 @@ namespace Game
                 cam,
                 out Vector2 localPoint
             );
+            
+            Debug.Log($"[RemoteCursorDisplay] {data.playerName} pos: screen({screenPoint.x:F0},{screenPoint.y:F0}) -> local({localPoint.x:F0},{localPoint.y:F0})");
             
             cursor.targetPosition = localPoint;
             cursor.lastUpdateTime = Time.time;
